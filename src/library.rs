@@ -1,19 +1,18 @@
-use gtk4::gio;
 use gtk4::glib::prelude::*;
 use gtk4::glib::subclass::prelude::*;
 use gtk4::glib::Properties;
 use gtk4::glib::{self, Object};
+use gtk4::{gio};
 use librespot::core::config::SessionConfig;
 use librespot::core::session::Session;
 use librespot::core::spotify_id::SpotifyId;
 use librespot::discovery::Credentials;
-use librespot::metadata::{Metadata, Track};
+use librespot::metadata::{Metadata, Playlist, Track};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
 use tokio::runtime::Runtime;
-use tokio::sync::{OnceCell, SetError};
 
 pub const LIK_TRACK: &str = "track";
 pub const LIK_PLAYLIST: &str = "playlist";
@@ -72,41 +71,62 @@ impl LineItem {
     fn update_track_metadata(&self, tm: &Track) {
         self.set_name(tm.name.clone());
     }
+
+    pub fn new_playlist(id: &SpotifyId) -> Self {
+        let it: Self = Object::builder().build();
+        it.set_kind(LIK_PLAYLIST);
+        it.set_id_b16(id.to_base62().unwrap());
+        it
+    }
+
+    fn update_playlist_metadata(&self, pm: &PlaylistWithId) {
+        self.set_name(pm.playlist.name.clone());
+    }
 }
 
-// The GTK-friendly interface for accessing Spotify music library.
-// All the public functions here are non-async and should be invoked
-// from the UI thread. They return GObjects immediately, and the
-// contents of the GObjects are filled in asynchronously later.
+// PlaylistWithId adds the base62-encoded playlist id, because Playlist type does not have it.
+struct PlaylistWithId {
+    playlist: Playlist,
+    id_b62: String,
+}
+
+#[derive(Clone)]
+pub struct GPlaylist {
+    id_b62: String,
+
+    playlist: Option<Playlist>,
+    line_item: LineItem,
+    tracks: gio::ListStore,
+}
+
+// GTK-friendly repository for Spotify music metadata.
+// All functions are synchronous and return GObjects immediately.
+// The returned GObjects may be empty, though, and the details are filled in later.
+// Under the hood, Library uses tokio runtime to fetch the data asynchronously
+// and then update the relevant GObject properties.
+// Note that since GObjects are not thread safe, neither is Library (it is not Send).
 #[derive(Clone)]
 pub struct Library {
-    spot_session: Arc<OnceLock<Session>>,
-    runtime: &'static Runtime,
-
-    // track_sender is used to send track metadata from any thread back into UI,
-    // where they are inserted into tracks hashmap.
-    track_sender: async_channel::Sender<Track>,
-}
-
-// LibraryOwner is the UI-thread side of the bridge. It owns all the track data.
-#[derive(Clone)]
-pub struct LibraryOwner {
-    lib: Library,
+    lib: LibraryWorker,
     // tracks is a repository of LineItem GObjects in the UI thread.
     tracks: Rc<RefCell<HashMap<String, LineItem>>>,
+    playlists: Rc<RefCell<HashMap<String, GPlaylist>>>,
 }
 
 impl Library {
-    pub fn new(user: &str, pwd: &str, runtime: &'static Runtime) -> (LibraryOwner, Self) {
+    pub fn new(user: &str, pwd: &str, runtime: &'static Runtime) -> Self {
         let (track_sender, track_receiver) = async_channel::bounded::<Track>(10);
-        let l = Library {
+        let (playlist_sender, playlist_receiver) = async_channel::bounded::<PlaylistWithId>(10);
+        let l = LibraryWorker {
             spot_session: Arc::new(OnceLock::new()),
             runtime: runtime,
             track_sender: track_sender,
+            playlist_sender: playlist_sender,
         };
-        let owner = LibraryOwner {
+        let owner = Library {
             lib: l,
             tracks: Rc::new(RefCell::new(HashMap::new())),
+            playlists: Rc::new(RefCell::new(HashMap::new())),
         };
         let credentials = Credentials::with_password(user, pwd);
         let lib = owner.lib.clone();
@@ -123,55 +143,17 @@ impl Library {
                 cloned_owner.update_track_entry(&track);
             }
         });
-
-        (owner, lib)
-    }
-
-    async fn connect_session(&self, creds: Credentials) -> Result<(), Session> {
-        println!("Connecting ..");
-        let session_config = SessionConfig::default();
-        let (session, _) = Session::connect(session_config, creds, None, false)
-            .await
-            .unwrap();
-        let result = self.spot_session.set(session);
-        println!("Session is now ready, ok={}", result.is_ok());
-        // TODO: we should probably start loading library here, or emit a GTK signal.
-        result
-    }
-    fn trigger_track_loading(&self, id: SpotifyId) {
-        let session = self.spot_session.get().unwrap().clone(); // TODO - panics before session connected.
-        let sender = self.track_sender.clone();
-        self.runtime.spawn(async move {
-            println!("loading track...");
-            let track = Track::get(&session, id).await;
-            println!("track loaded:");
-            sender
-                .send(track.unwrap())
-                .await
-                .expect("track channel closed?");
-        });
-    }
-
-    /*
-    pub fn load_tracks_from_playlist(&self, id: &SpotifyId) -> gio::ListStore<LineItem> {
-        // TODO: cache the LineItems for reuse later
-        let store = gio::ListStore::new::<LineItem>();
-        self.runtime.spawn(async move {
-            println!("loading playlist ...");
-            let plist = Playlist::get(&session, playlist_uri).await.unwrap();
-            println!("{:?}", plist);
-            for track_id in plist.tracks {
-                let plist_track = Track::get(&session, track_id).await.unwrap();
-                println!("track: {} ", plist_track.name);
-                sender.send(plist_track).await.expect("channel closed?");
+        // Spawn a UI future for updating the playlsts in the hashmap:
+        let cloned_owner = owner.clone();
+        glib::spawn_future_local(async move {
+            while let Ok(playlist) = playlist_receiver.recv().await {
+                cloned_owner.update_playlist_entry(&playlist);
             }
         });
-        store
-    }
-    */
-}
 
-impl LibraryOwner {
+        owner
+    }
+
     fn unique_track(&self, id: &SpotifyId) -> LineItem {
         let id_str = id.to_base62().unwrap();
         let mut tracks = self.tracks.borrow_mut();
@@ -197,16 +179,111 @@ impl LibraryOwner {
     }
 
     fn update_track_entry(&self, track: &Track) {
-        let id_str = track.id.to_base62().unwrap();
-        let tracks = self.tracks.borrow();
-        match tracks.get(&id_str) {
-            Some(item) => item.update_track_metadata(track),
-            None => println!(
-                "Track {} (id {}) is not in the cache. Got: {}",
-                track.name,
-                id_str,
-                tracks.keys().cloned().collect::<Vec<String>>().join(",")
-            ),
+        let item = self.unique_track(&track.id);
+        item.update_track_metadata(track)
+    }
+
+    fn unique_playlist(&self, id: &SpotifyId) -> GPlaylist {
+        let id_str = id.to_base62().unwrap();
+        let mut playlists = self.playlists.borrow_mut();
+        match playlists.get(&id_str) {
+            Some(item) => item.clone(),
+            None => {
+                let it = LineItem::new_playlist(&id);
+                let gp = GPlaylist {
+                    playlist: None,
+                    id_b62: id_str.clone(),
+                    line_item: it,
+                    tracks: gio::ListStore::new::<LineItem>(),
+                };
+                playlists.insert(id_str.clone(), gp.clone());
+                println!(
+                    "Inserted playlist {}. Now got {}.",
+                    &id_str,
+                    playlists.keys().cloned().collect::<Vec<String>>().join(",")
+                );
+                gp
+            }
         }
+    }
+
+    pub fn load_playlist(&self, id: SpotifyId) -> (LineItem, gio::ListStore) {
+        let it = self.unique_playlist(&id);
+        self.lib.trigger_playlist_loading(id);
+        (it.line_item, it.tracks)
+    }
+
+    fn update_playlist_entry(&self, playlist: &PlaylistWithId) {
+        let gp = self.unique_playlist(&SpotifyId::from_base62(&playlist.id_b62).unwrap());
+        gp.line_item.update_playlist_metadata(playlist);
+        gp.tracks.remove_all();
+        for tid in &playlist.playlist.tracks {
+            gp.tracks.append(&self.unique_track(tid));
+            self.lib.trigger_track_loading(*tid);
+        }
+    }
+}
+
+// Connection to Spotify using tokio runtime with the capacity to send data back to GTK side.
+// LibraryWorker does not touch any GObjects directly, because they
+// can only be accessed from the UI thread, not from tokio.
+// Track and playlist metadata is instead passed back to the UI thread
+// over channels.
+// All methods with names like `trigger_X` spawn async operations and return immediately.
+// The results are visible via changes to GObjects later on.
+#[derive(Clone)]
+struct LibraryWorker {
+    spot_session: Arc<OnceLock<Session>>,
+    runtime: &'static Runtime,
+
+    // track_sender is used to send track metadata from any thread back into UI,
+    // where they are inserted into tracks hashmap.
+    track_sender: async_channel::Sender<Track>,
+    playlist_sender: async_channel::Sender<PlaylistWithId>,
+}
+
+impl LibraryWorker {
+    async fn connect_session(&self, creds: Credentials) -> Result<(), Session> {
+        println!("Connecting ..");
+        let session_config = SessionConfig::default();
+        let (session, _) = Session::connect(session_config, creds, None, false)
+            .await
+            .unwrap();
+        let result = self.spot_session.set(session);
+        println!("Session is now ready, ok={}", result.is_ok());
+        // TODO: we should probably start loading library here, or emit a GTK signal.
+        result
+    }
+
+    fn trigger_track_loading(&self, id: SpotifyId) {
+        let session = self.spot_session.get().unwrap().clone(); // TODO - panics before session connected.
+        let sender = self.track_sender.clone();
+        self.runtime.spawn(async move {
+            println!("loading track...");
+            let track = Track::get(&session, id).await;
+            println!("track loaded:");
+            sender
+                .send(track.unwrap())
+                .await
+                .expect("track channel closed?");
+        });
+    }
+
+    fn trigger_playlist_loading(&self, id: SpotifyId) {
+        let session = self.spot_session.get().unwrap().clone(); // TODO - panics before session connected.
+        let sender = self.playlist_sender.clone();
+        let _cloned_self = self.clone();
+        self.runtime.spawn(async move {
+            println!("loading playlist ...");
+            let plist = Playlist::get(&session, id).await.unwrap();
+            println!("{:?}", plist);
+            sender
+                .send(PlaylistWithId {
+                    id_b62: id.to_base62().unwrap(),
+                    playlist: plist.clone(),
+                })
+                .await
+                .expect("playlist channel closed?");
+        });
     }
 }

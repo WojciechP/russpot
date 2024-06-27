@@ -1,7 +1,6 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex},
 };
 
 use librespot::{
@@ -84,7 +83,7 @@ impl Runtime {
         }
     }
 
-    pub fn play_track(&mut self, track: &str, sender: async_channel::Sender<Track>) {
+    pub fn play_track(&mut self, track: &str, _sender: async_channel::Sender<Track>) {
         let track = SpotifyId::from_base62(track).unwrap();
         self.spot
             .lock()

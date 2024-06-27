@@ -5,19 +5,17 @@ mod views;
 
 use std::sync::OnceLock;
 
-use glib::clone;
 use gtk4::gio::{self, ApplicationCommandLine, ApplicationFlags};
-use gtk4::{
-    glib, Application, ApplicationWindow, Label, ListItem, ListView, NoSelection,
-    SignalListItemFactory, Widget,
-};
 use gtk4::{prelude::*, Button};
+use gtk4::{
+    Application, ApplicationWindow, ListView, NoSelection, SignalListItemFactory,
+};
 use librespot::core::spotify_id::SpotifyId;
-use librespot::metadata::Track;
+
 use tokio::runtime::Runtime;
 
 use crate::library::{Library, LineItem};
-use crate::viewmodel::SpotifyItemObject;
+use crate::views::item;
 
 const APP_ID: &str = "org.gtk_rs.Russpot";
 
@@ -52,7 +50,7 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
     };
     let username: String = username.to_string();
     let pwd: String = pwd.to_string();
-    let track: String = track.to_string();
+    let _track: String = track.to_string();
 
     // Create a button with label and margins
     let button = Button::builder()
@@ -61,40 +59,13 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
         .height_request(40)
         .build();
 
+    const playlist_id: &str = "4hcZPO5io5eAmd0iHW4j8a";
     let tracks_model = gio::ListStore::new::<LineItem>();
 
     let tracks_factory = SignalListItemFactory::new();
     tracks_factory.connect_setup(move |_, list_item| {
-        let label = Label::new(None);
-        list_item
-            .downcast_ref::<ListItem>()
-            .expect("Needs to be ListItem")
-            .set_child(Some(&label));
-
-        // Bind the LineItem properties to the widget:
-        list_item
-            .property_expression("item")
-            .chain_property::<LineItem>("name")
-            .bind(&label, "label", Widget::NONE);
+        item::new_item(list_item);
     });
-    /*
-    tracks_factory.connect_bind(move |_, list_item| {
-        let line_item = list_item
-            .downcast_ref::<ListItem>()
-            .expect("Needs to be ListItem")
-            .item()
-            .and_downcast::<LineItem>()
-            .expect("The item has to be LineItem");
-        // Get `Label` from `ListItem`
-        let label = list_item
-            .downcast_ref::<ListItem>()
-            .expect("Needs to be ListItem")
-            .child()
-            .and_downcast::<Label>()
-            .expect("The child has to be a `Label`.");
-        label.set_label(&line_item.name().to_string());
-    });
-    */
 
     let tracks_view = ListView::new(
         Some(NoSelection::new(Some(tracks_model.clone()))),
@@ -117,19 +88,14 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
     window.present();
 
     // Initialize Spotify library:
-    let (owner, slib) = Library::new(&username, &pwd, runtime());
+    let slib = Library::new(&username, &pwd, runtime());
     // TODO: connect to library's connected signal to load playlists?
 
     // Connect to "clicked" signal of `button`
     button.connect_clicked(move |_button| {
-        let slib = slib.clone();
         println!("clicked!");
-        let tids: Vec<&str> = vec!["6PUPRb62MyZo6MRlEQZKFq", "5Y8IMaCAPl996kjC4uo9Tx"];
-        for tid in tids {
-            println!("loading {}", tid);
-            let id = SpotifyId::from_base62(tid).unwrap();
-            let track = owner.load_track(id);
-            tracks_model.append(&track);
-        }
+        let plist_id = SpotifyId::from_base62(playlist_id).unwrap();
+        let (_plist_item, plist_store) = slib.load_playlist(plist_id);
+        tracks_view.set_model(Some(&NoSelection::new(Some(plist_store))));
     });
 }
