@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 async-channel = "2.3.1"
-gtk4 = "0.8.2"
+gtk = { version = "0.8.2", package = "gtk4", features = ["v4_12"] }
 librespot = "0.4.2"
 tokio = "1.38.0"

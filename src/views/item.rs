@@ -1,21 +1,23 @@
-use gtk4::{
-    Label, Widget,
-};
-use gtk4::{prelude::*, ListItem};
-
+use gtk::{prelude::*, Button, ListItem};
+use gtk::{Label, Widget};
 
 use crate::library::LineItem;
 
 pub(crate) fn new_item(list_item: &ListItem) {
-    let label = Label::new(None);
-    list_item
-        .downcast_ref::<ListItem>()
-        .expect("Needs to be ListItem")
-        .set_child(Some(&label));
+    let btn = Button::new();
+    let bx = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .build();
+    let title = Label::new(Some("?"));
+    bx.append(&title);
+    btn.set_child(Some(&bx));
+    list_item.set_child(Some(&btn));
 
     // Bind the LineItem properties to the widget:
     list_item
         .property_expression("item")
         .chain_property::<LineItem>("name")
-        .bind(&label, "label", Widget::NONE);
+        .bind(&title, "label", Widget::NONE);
+
+    btn.add_css_class("line-item");
 }

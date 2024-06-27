@@ -1,0 +1,22 @@
+button.line-item {
+    font-size: 20px;
+    color: #dddddd;
+    background-color: #222222;
+    background-image: none; border-image: none;
+}
+
+
+button.line-item label {
+    background-color: transparent;
+}
+
+button.line-item box {
+    background-color: transparent;
+}
+button.line-item:focus-within {
+    background-color: #444444;
+}
+
+button.line-item:focused {
+}
+

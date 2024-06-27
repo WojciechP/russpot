@@ -1,15 +1,16 @@
 mod library;
 mod spot;
-mod viewmodel;
 mod views;
 
 use std::sync::OnceLock;
 
-use gtk4::gio::{self, ApplicationCommandLine, ApplicationFlags};
-use gtk4::{prelude::*, Button};
-use gtk4::{
-    Application, ApplicationWindow, ListView, NoSelection, SignalListItemFactory,
-};
+use gtk::gdk::Display;
+use gtk::gio::{self, ActionEntry, ApplicationCommandLine, ApplicationFlags, SimpleActionGroup};
+use gtk::glib;
+use gtk::glib::clone;
+use gtk::glib::prelude::*;
+use gtk::{prelude::*, Button, CssProvider, ListScrollFlags, PolicyType, ScrolledWindow};
+use gtk::{Application, ApplicationWindow, ListView, NoSelection, SignalListItemFactory};
 use librespot::core::spotify_id::SpotifyId;
 
 use tokio::runtime::Runtime;
@@ -31,6 +32,7 @@ fn main() {
         .flags(ApplicationFlags::HANDLES_COMMAND_LINE)
         .build();
 
+    app.connect_startup(|_| load_css());
     app.connect_command_line(|app, arg| {
         println!("Handling command-line...");
         build_ui(app, arg);
@@ -38,6 +40,18 @@ fn main() {
     });
 
     app.run_with_args(&std::env::args().collect::<Vec<_>>());
+}
+fn load_css() {
+    // Load the CSS file and add it to the provider
+    let provider = CssProvider::new();
+    provider.load_from_data(include_str!("style.css"));
+
+    // Add the provider to the default screen
+    gtk::style_context_add_provider_for_display(
+        &Display::default().expect("Could not connect to a display."),
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
 }
 
 fn build_ui(app: &Application, args: &ApplicationCommandLine) {
@@ -56,15 +70,16 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
     let button = Button::builder()
         .label("Play!")
         .width_request(100)
-        .height_request(40)
+        .hexpand(true)
         .build();
 
-    const playlist_id: &str = "4hcZPO5io5eAmd0iHW4j8a";
+    const playlist_id: &str = "6akHLZRrHoVKtXHgNZLfgj";
+
     let tracks_model = gio::ListStore::new::<LineItem>();
 
     let tracks_factory = SignalListItemFactory::new();
     tracks_factory.connect_setup(move |_, list_item| {
-        item::new_item(list_item);
+        item::new_item(list_item.downcast_ref().expect("must be a ListItem"));
     });
 
     let tracks_view = ListView::new(
@@ -72,8 +87,16 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
         Some(tracks_factory),
     );
 
-    let main_box = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
-    main_box.append(&tracks_view);
+    let scrolled_window = ScrolledWindow::builder()
+        .hscrollbar_policy(PolicyType::Never) // Disable horizontal scrolling
+        .min_content_width(360)
+        .vexpand(true)
+        .height_request(500)
+        .child(&tracks_view)
+        .build();
+
+    let main_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    main_box.append(&scrolled_window);
     main_box.append(&button);
 
     // Create a window and set the title
@@ -84,6 +107,18 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
         .width_request(200)
         .build();
 
+    let action_down = ActionEntry::builder("down")
+        .activate(clone!(@weak tracks_view => move |_, _, _| {
+            tracks_view.scroll_to(2, ListScrollFlags::FOCUS, None);
+        }))
+        .build();
+
+    let nav_actions = SimpleActionGroup::new();
+    nav_actions.add_action_entries([action_down]);
+    window.insert_action_group("nav", Some(&nav_actions));
+
+    app.set_accels_for_action("nav.down", &["J"]);
+
     // Present window
     window.present();
 
@@ -92,10 +127,11 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
     // TODO: connect to library's connected signal to load playlists?
 
     // Connect to "clicked" signal of `button`
+    let tv = tracks_view.clone();
     button.connect_clicked(move |_button| {
         println!("clicked!");
         let plist_id = SpotifyId::from_base62(playlist_id).unwrap();
         let (_plist_item, plist_store) = slib.load_playlist(plist_id);
-        tracks_view.set_model(Some(&NoSelection::new(Some(plist_store))));
+        tv.set_model(Some(&NoSelection::new(Some(plist_store))));
     });
 }

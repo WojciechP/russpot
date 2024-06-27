@@ -1,8 +1,8 @@
-use gtk4::glib::prelude::*;
-use gtk4::glib::subclass::prelude::*;
-use gtk4::glib::Properties;
-use gtk4::glib::{self, Object};
-use gtk4::{gio};
+use gtk::gio;
+use gtk::glib::prelude::*;
+use gtk::glib::subclass::prelude::*;
+use gtk::glib::Properties;
+use gtk::glib::{self, Object};
 use librespot::core::config::SessionConfig;
 use librespot::core::session::Session;
 use librespot::core::spotify_id::SpotifyId;
@@ -259,9 +259,7 @@ impl LibraryWorker {
         let session = self.spot_session.get().unwrap().clone(); // TODO - panics before session connected.
         let sender = self.track_sender.clone();
         self.runtime.spawn(async move {
-            println!("loading track...");
             let track = Track::get(&session, id).await;
-            println!("track loaded:");
             sender
                 .send(track.unwrap())
                 .await
