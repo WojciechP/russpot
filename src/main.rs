@@ -1,28 +1,22 @@
+mod library;
+mod spot;
 mod viewmodel;
+mod views;
 
 use std::sync::OnceLock;
 
 use glib::clone;
-use gtk4::builders::SearchEntryBuilder;
 use gtk4::gio::{self, ApplicationCommandLine, ApplicationFlags};
-use gtk4::glib::ffi::G_PRIORITY_DEFAULT;
-use gtk4::glib::MainContext;
 use gtk4::{
     glib, Application, ApplicationWindow, Label, ListItem, ListView, NoSelection,
-    SignalListItemFactory,
+    SignalListItemFactory, Widget,
 };
 use gtk4::{prelude::*, Button};
-use librespot::core::authentication::Credentials;
-use librespot::core::config::SessionConfig;
-use librespot::core::session::Session;
 use librespot::core::spotify_id::SpotifyId;
-use librespot::metadata::{Metadata, Playlist, Track};
-use librespot::playback::audio_backend;
-use librespot::playback::config::{AudioFormat, PlayerConfig};
-use librespot::playback::mixer::NoOpVolume;
-use librespot::playback::player::Player;
+use librespot::metadata::Track;
 use tokio::runtime::Runtime;
 
+use crate::library::{Library, LineItem};
 use crate::viewmodel::SpotifyItemObject;
 
 const APP_ID: &str = "org.gtk_rs.Russpot";
@@ -67,12 +61,7 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
         .height_request(40)
         .build();
 
-    let tracks: Vec<SpotifyItemObject> = vec!["6PUPRb62MyZo6MRlEQZKFq", "5Y8IMaCAPl996kjC4uo9Tx"]
-        .into_iter()
-        .map(SpotifyItemObject::new_track)
-        .collect();
-    let tracks_model = gio::ListStore::new::<SpotifyItemObject>();
-    tracks_model.extend_from_slice(&tracks);
+    let tracks_model = gio::ListStore::new::<LineItem>();
 
     let tracks_factory = SignalListItemFactory::new();
     tracks_factory.connect_setup(move |_, list_item| {
@@ -81,14 +70,21 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
             .downcast_ref::<ListItem>()
             .expect("Needs to be ListItem")
             .set_child(Some(&label));
+
+        // Bind the LineItem properties to the widget:
+        list_item
+            .property_expression("item")
+            .chain_property::<LineItem>("name")
+            .bind(&label, "label", Widget::NONE);
     });
+    /*
     tracks_factory.connect_bind(move |_, list_item| {
-        let spotify_object = list_item
+        let line_item = list_item
             .downcast_ref::<ListItem>()
             .expect("Needs to be ListItem")
             .item()
-            .and_downcast::<SpotifyItemObject>()
-            .expect("The item has to be SpotifyItemObject");
+            .and_downcast::<LineItem>()
+            .expect("The item has to be LineItem");
         // Get `Label` from `ListItem`
         let label = list_item
             .downcast_ref::<ListItem>()
@@ -96,8 +92,9 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
             .child()
             .and_downcast::<Label>()
             .expect("The child has to be a `Label`.");
-        label.set_label(&spotify_object.trackid().to_string());
+        label.set_label(&line_item.name().to_string());
     });
+    */
 
     let tracks_view = ListView::new(
         Some(NoSelection::new(Some(tracks_model.clone()))),
@@ -119,64 +116,20 @@ fn build_ui(app: &Application, args: &ApplicationCommandLine) {
     // Present window
     window.present();
 
-    // Start receiving tracks from the tokio async loop:
-    let (sender, receiver) = async_channel::bounded::<Track>(1);
+    // Initialize Spotify library:
+    let (owner, slib) = Library::new(&username, &pwd, runtime());
+    // TODO: connect to library's connected signal to load playlists?
 
     // Connect to "clicked" signal of `button`
     button.connect_clicked(move |_button| {
+        let slib = slib.clone();
         println!("clicked!");
-        println!("args: {} {} {}", username, pwd, track);
-        runtime().spawn(
-            clone!(@strong username, @strong pwd, @strong track, @strong sender => async move{
-                play_track(&username, &pwd, &track, sender ).await;
-            }),
-        );
-    });
-    // Spawn a future for receiving the tracks:
-    glib::spawn_future_local(async move {
-        while let Ok(response) = receiver.recv().await {
-            tracks_model.append(&SpotifyItemObject::new_track(&response.name));
+        let tids: Vec<&str> = vec!["6PUPRb62MyZo6MRlEQZKFq", "5Y8IMaCAPl996kjC4uo9Tx"];
+        for tid in tids {
+            println!("loading {}", tid);
+            let id = SpotifyId::from_base62(tid).unwrap();
+            let track = owner.load_track(id);
+            tracks_model.append(&track);
         }
     });
-}
-
-async fn play_track(user: &str, pwd: &str, track: &str, sender: async_channel::Sender<Track>) {
-    let session_config = SessionConfig::default();
-    let player_config = PlayerConfig::default();
-    let audio_format = AudioFormat::default();
-
-    let credentials = Credentials::with_password(user, pwd);
-
-    let track = SpotifyId::from_base62(track).unwrap();
-
-    let backend = audio_backend::find(None).unwrap();
-
-    println!("Connecting ..");
-    let (session, _) = Session::connect(session_config, credentials, None, false)
-        .await
-        .unwrap();
-
-    let (mut player, _) = Player::new(
-        player_config,
-        session.clone(),
-        Box::new(NoOpVolume),
-        move || backend(None, audio_format),
-    );
-
-    player.load(track, true, 0);
-
-    println!("Playing started, fetching playlist...");
-
-    let playlist_uri = SpotifyId::from_uri("spotify:playlist:0q9suO2gxC523Vx2HZupcG").unwrap();
-    let plist = Playlist::get(&session, playlist_uri).await.unwrap();
-    println!("{:?}", plist);
-    for track_id in plist.tracks {
-        let plist_track = Track::get(&session, track_id).await.unwrap();
-        println!("track: {} ", plist_track.name);
-        sender.send(plist_track).await.expect("channel closed?");
-    }
-
-    player.await_end_of_track().await;
-
-    println!("Done");
 }
