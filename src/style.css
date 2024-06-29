@@ -1,22 +1,14 @@
-button.line-item {
-    font-size: 20px;
-    color: #dddddd;
-    background-color: #222222;
-    background-image: none; border-image: none;
+.playlistitem {
+    background-color: #dddddd;
+    margin: 0.4em;
+    padding: 0.4em;
+        background-image: none; border-image: none;
 }
-
-
-button.line-item label {
-    background-color: transparent;
+.playlistitem .textpart {
+    margin-left: 1em;
 }
-
-button.line-item box {
-    background-color: transparent;
-}
-button.line-item:focus-within {
-    background-color: #444444;
-}
-
-button.line-item:focused {
+.playlistitem .name {
+    font-size: 1.4em;
+    padding-bottom: 0.4em;
 }
 
