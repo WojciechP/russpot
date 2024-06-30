@@ -1,8 +1,8 @@
 use std::collections::HashSet;
-use std::time::Duration;
+
 use std::{env, sync::Arc};
 
-use chrono::{DateTime, Duration as ChronoDuration, Utc};
+
 use librespot::core::keymaster::Token;
 use librespot::{
     core::{config::SessionConfig, session::Session, spotify_id::SpotifyId},
@@ -11,7 +11,7 @@ use librespot::{
 };
 use rspotify::model::{PlayContextId, PlaylistId};
 use rspotify::Config;
-use rspotify::{clients::OAuthClient, scopes, AuthCodeSpotify, OAuth, Token as RSToken};
+use rspotify::{clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
 use tokio::sync::OnceCell;
 
 /// SpotConn encapsulates connection to Spotify.

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use gtk::gdk_pixbuf::Pixbuf;
-use gtk::{gio, glib, prelude::*};
+use gtk::{glib, prelude::*};
 use relm4::prelude::*;
 use rspotify::model::SimplifiedPlaylist;
 
@@ -145,7 +145,7 @@ impl FactoryComponent for PlaylistItem {
         }
     }
 
-    fn update_cmd(&mut self, message: Self::CommandOutput, sender: FactorySender<Self>) {
+    fn update_cmd(&mut self, message: Self::CommandOutput, _sender: FactorySender<Self>) {
         match message {
             PlaylistItemCommandOutput::ImageLoaded(bytes) => {
                 let stream = gtk::gio::MemoryInputStream::from_bytes(&bytes);

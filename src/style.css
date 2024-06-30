@@ -1,18 +1,18 @@
-.playlistitem {
+.smallblock {
     background-color: #dddddd;
     margin: 0.4em;
     padding: 0.4em;
         background-image: none; border-image: none;
 }
 
-.playlistitem.has-cursor {
+.has-cursor .smallblock {
     background-color: #cccccc;
 }
 
-.playlistitem .textpart {
+.smallblock .textpart {
     margin-left: 1em;
 }
-.playlistitem .name {
+.smallblock .name {
     font-size: 1.4em;
     padding-bottom: 0.4em;
 }

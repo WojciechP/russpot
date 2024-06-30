@@ -1,14 +1,14 @@
 use components::denselist::DenseList;
-use components::spotitem::SpotItemModel;
+use components::smallblock::BlockInit;
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
-use relm4::actions::{AccelsPlus, ActionName, ActionablePlus};
+use relm4::actions::{AccelsPlus, ActionName};
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::{self, Component, ComponentController, Controller};
-use relm4::{gtk, view, ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent};
+use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 
+use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::denselist::{DenseListInit, DenseListInput};
-use crate::components::spotitem::SpotifyItemInit;
 use crate::spotconn::SpotConn;
 
 mod components;
@@ -16,15 +16,15 @@ mod spotconn;
 
 struct AppModel {
     counter: u8,
-    spot_item: Controller<SpotItemModel>,
+    spot: SpotConn,
 
     denselist: Controller<DenseList>,
+    actions: Controller<Actions>,
 }
 
 #[derive(Debug)]
 enum AppInput {
-    Increment,
-    Decrement,
+    PlayNow,
 }
 
 #[relm4::component]
@@ -42,22 +42,27 @@ impl relm4::SimpleComponent for AppModel {
             set_default_width: 300,
             set_default_height: 100,
             gtk::Box {
-                set_orientation: gtk::Orientation::Vertical,
+                set_orientation: gtk::Orientation::Horizontal,
 
-                #[name="btn"]
-                gtk::MenuButton {
-                    set_menu_model: Some(&menu_model),
-                },
 
 
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_homogeneous: false,
                      #[local_ref]
-                     denselist_widget -> gtk::ScrolledWindow{
+                     denselist_widget -> gtk::Box{
                          set_vexpand: true,
                      },
-                }
+                },
+
+                #[local_ref]
+                actions_widget -> gtk::Box {
+                    set_width_request: 200,
+                },
+                #[name="btn"]
+                gtk::MenuButton {
+                    set_menu_model: Some(&menu_model),
+                },
             },
         }
     }
@@ -69,34 +74,37 @@ impl relm4::SimpleComponent for AppModel {
         sender: ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
         // let spot_playlist_id = SpotifyId::from_base62("7EsmFgvsvdK7HXh5k5Esbt").unwrap();
-        let spot_track_id = SpotifyId::from_base62("416oYM4vj129L8BP7B0qlO").unwrap();
+        let _spot_track_id = SpotifyId::from_base62("416oYM4vj129L8BP7B0qlO").unwrap();
         let spot = SpotConn::new();
-        let spot_item: Controller<SpotItemModel> = SpotItemModel::builder()
-            .launch(SpotifyItemInit {
-                spot: spot.clone(),
-                id: spot_track_id,
-            })
-            .forward(sender.input_sender(), |msg| match msg {
-                _ => panic!("child should not have msgs yet"),
-            });
 
         let denselist: Controller<DenseList> = DenseList::builder()
             .launch(DenseListInit { spot: spot.clone() })
             .forward(sender.input_sender(), |msg| match msg {});
-        let model = AppModel {
-            counter,
-            spot_item,
-            denselist,
-        };
 
         let menu_model = gtk::gio::Menu::new();
         menu_model.append(Some("Down"), Some(&ActionDown::action_name()));
         menu_model.append(Some("Up"), Some(&ActionUp::action_name()));
 
+        let actions_model = Actions::builder()
+            .launch(())
+            .forward(sender.input_sender(), |msg| match msg {
+                ActionsOutput::PlayNow => {
+                    println!("forwarding playnow");
+                    AppInput::PlayNow
+                }
+            });
+        let model = AppModel {
+            spot: spot,
+            counter,
+            denselist,
+            actions: actions_model,
+        };
         let denselist_widget = model.denselist.widget();
+        let actions_widget = model.actions.widget();
+
         let widgets = view_output!();
 
-        let mut app = relm4::main_application();
+        let app = relm4::main_application();
 
         app.set_accelerators_for_action::<ActionQuit>(&["<primary>Q"]);
         let denselist_sender = model.denselist.sender().clone();
@@ -105,7 +113,7 @@ impl relm4::SimpleComponent for AppModel {
             relm4::main_application().quit();
             denselist_sender.emit(DenseListInput::CursorMove(1));
         });
-        let denselist_sender = model.denselist.sender().clone();
+        let _denselist_sender = model.denselist.sender().clone();
 
         app.set_accelerators_for_action::<ActionDown>(&["J"]);
         let denselist_sender = model.denselist.sender().clone();
@@ -136,12 +144,28 @@ impl relm4::SimpleComponent for AppModel {
 
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
         match message {
-            AppInput::Increment => {
-                self.counter = self.counter.wrapping_add(1);
-            }
-            AppInput::Decrement => {
-                self.counter = self.counter.wrapping_sub(1);
-            }
+            AppInput::PlayNow => match self.denselist.model().current_item() {
+                Some(item) => {
+                    self.play_now(_sender, item);
+                }
+                None => {
+                    println!("cannot play, cursor is empty")
+                }
+            },
+        }
+    }
+}
+
+impl AppModel {
+    fn play_now(&self, sender: ComponentSender<AppModel>, item: BlockInit) {
+        let spot = self.spot.clone();
+        match item {
+            BlockInit::SimplifiedPlaylist(sp) => sender.oneshot_command(async move {
+                println!("starting playback of playlist {}", sp.name);
+                spot.play_playlist(sp.id).await;
+                ()
+            }),
+            BlockInit::FullTrack(tr) => todo!("Cannot play tracks yet"),
         }
     }
 }
