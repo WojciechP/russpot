@@ -10,8 +10,12 @@ use crate::spotconn::SpotConn;
 pub struct PlaylistItem {
     #[do_not_track]
     spot: SpotConn,
+    #[do_not_track]
+    pub self_idx: DynamicIndex,
+
     simple: SimplifiedPlaylist,
     image: Option<Pixbuf>,
+    pub has_cursor: bool,
 }
 
 #[derive(Debug)]
@@ -23,10 +27,13 @@ pub struct PlaylistItemInit {
 #[derive(Debug)]
 pub enum PlaylistItemInput {
     PlayNow,
+    SetCursorByClick,
 }
 
 #[derive(Debug)]
-pub enum PlaylistItemOutput {}
+pub enum PlaylistItemOutput {
+    CaptcuredCursorByClick(DynamicIndex),
+}
 
 #[derive(Debug)]
 pub enum PlaylistItemCommandOutput {
@@ -45,8 +52,10 @@ impl FactoryComponent for PlaylistItem {
     view! {
         #[root]
         gtk::Button {
-                set_css_classes: &["playlistitem"],
-            connect_clicked => PlaylistItemInput::PlayNow,
+            set_css_classes: &["playlistitem"],
+            #[watch]
+            set_class_active: ("has-cursor", self.has_cursor),
+            connect_clicked => PlaylistItemInput::SetCursorByClick,
             gtk::Box{
                 set_orientation: gtk::Orientation::Horizontal,
                 #[name="image"]
@@ -70,6 +79,10 @@ impl FactoryComponent for PlaylistItem {
                         set_label: &self.simple.owner.display_name.clone().unwrap_or_default(),
                         set_xalign: 0.0,
                     },
+                    gtk::Label{
+                        #[track = "self.changed(PlaylistItem::has_cursor())"]
+                        set_label: &format!("cursor={}", self.has_cursor),
+                    },
                 },
             },
         }
@@ -84,6 +97,8 @@ impl FactoryComponent for PlaylistItem {
             spot: init.spot,
             simple: init.simple,
             image: None::<Pixbuf>,
+            has_cursor: false,
+            self_idx: _index.clone(),
             tracker: 0,
         };
         if let Some(img) = model.simple.images.first() {
@@ -99,6 +114,7 @@ impl FactoryComponent for PlaylistItem {
     }
 
     fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
+        self.reset();
         match msg {
             PlaylistItemInput::PlayNow => {
                 println!("Play now: {}", self.simple.name);
@@ -109,16 +125,22 @@ impl FactoryComponent for PlaylistItem {
                     PlaylistItemCommandOutput::PlaylistStarted
                 })
             }
+            PlaylistItemInput::SetCursorByClick => {
+                sender
+                    .output_sender()
+                    .emit(PlaylistItemOutput::CaptcuredCursorByClick(
+                        self.self_idx.clone(),
+                    ));
+            }
         }
     }
 
     fn update_cmd(&mut self, message: Self::CommandOutput, sender: FactorySender<Self>) {
         match message {
             PlaylistItemCommandOutput::ImageLoaded(bytes) => {
-                println!("image loaded for {}", self.simple.name);
                 let stream = gtk::gio::MemoryInputStream::from_bytes(&bytes);
                 let pixbuf = Pixbuf::from_stream(&stream, gtk::gio::Cancellable::NONE).unwrap();
-                self.image = Some(pixbuf);
+                self.set_image(Some(pixbuf));
             }
             PlaylistItemCommandOutput::PlaylistStarted => {
                 println!("started playing playlist {}", self.simple.name);

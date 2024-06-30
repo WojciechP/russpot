@@ -2,12 +2,12 @@ use components::denselist::DenseList;
 use components::spotitem::SpotItemModel;
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
-use relm4::actions::AccelsPlus;
+use relm4::actions::{AccelsPlus, ActionName, ActionablePlus};
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, view, ComponentParts, ComponentSender, RelmApp, RelmWidgetExt, SimpleComponent};
 
-use crate::components::denselist::DenseListInit;
+use crate::components::denselist::{DenseListInit, DenseListInput};
 use crate::components::spotitem::SpotifyItemInit;
 use crate::spotconn::SpotConn;
 
@@ -37,25 +37,28 @@ impl relm4::SimpleComponent for AppModel {
     type Init = u8;
 
     view! {
-        gtk::Window {
-            set_title: Some("Simple app"),
+        main_window = gtk::Window {
+            set_title: Some("Russpot"),
             set_default_width: 300,
             set_default_height: 100,
-
             gtk::Box {
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 5,
-                set_margin_all: 5,
-
-                model.spot_item.widget(),
 
                 #[name="btn"]
-                gtk::Button {
-                    set_label: "Increment",
+                gtk::MenuButton {
+                    set_menu_model: Some(&menu_model),
                 },
-           },
 
-           model.denselist.widget(),
+
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Vertical,
+                    set_homogeneous: false,
+                     #[local_ref]
+                     denselist_widget -> gtk::ScrolledWindow{
+                         set_vexpand: true,
+                     },
+                }
+            },
         }
     }
 
@@ -75,11 +78,6 @@ impl relm4::SimpleComponent for AppModel {
             })
             .forward(sender.input_sender(), |msg| match msg {
                 _ => panic!("child should not have msgs yet"),
-                /*
-                HeaderOutput::View => AppMsg::SetMode(AppMode::View),
-                HeaderOutput::Edit => AppMsg::SetMode(AppMode::Edit),
-                HeaderOutput::Export => AppMsg::SetMode(AppMode::Export),
-                */
             });
 
         let denselist: Controller<DenseList> = DenseList::builder()
@@ -91,15 +89,47 @@ impl relm4::SimpleComponent for AppModel {
             denselist,
         };
 
+        let menu_model = gtk::gio::Menu::new();
+        menu_model.append(Some("Down"), Some(&ActionDown::action_name()));
+        menu_model.append(Some("Up"), Some(&ActionUp::action_name()));
+
+        let denselist_widget = model.denselist.widget();
         let widgets = view_output!();
 
-        relm4::main_application().set_accelerators_for_action::<ActionQuit>(&["<primary>Q"]);
+        let mut app = relm4::main_application();
+
+        app.set_accelerators_for_action::<ActionQuit>(&["<primary>Q"]);
+        let denselist_sender = model.denselist.sender().clone();
         let a_quit: RelmAction<ActionQuit> = RelmAction::new_stateless(move |_| {
+            println!("quit");
             relm4::main_application().quit();
+            denselist_sender.emit(DenseListInput::CursorMove(1));
         });
-        let mut action_group = RelmActionGroup::<WindowActionGroup>::new();
+        let denselist_sender = model.denselist.sender().clone();
+
+        app.set_accelerators_for_action::<ActionDown>(&["J"]);
+        let denselist_sender = model.denselist.sender().clone();
+        let a_down: RelmAction<ActionDown> = RelmAction::new_stateless(move |_| {
+            //         app.quit();
+            println!("actin down");
+            denselist_sender
+                .send(DenseListInput::CursorMove(1))
+                .unwrap();
+        });
+        app.set_accelerators_for_action::<ActionUp>(&["K"]);
+        let denselist_sender = model.denselist.sender().clone();
+        let a_up: RelmAction<ActionUp> = RelmAction::new_stateless(move |_| {
+            println!("actin up");
+            denselist_sender
+                .send(DenseListInput::CursorMove(-1))
+                .unwrap();
+        });
+        let mut action_group = RelmActionGroup::<BozoActionGroup>::new();
+        action_group.add_action(a_down);
+        action_group.add_action(a_up);
         action_group.add_action(a_quit);
-        action_group.register_for_main_application();
+        action_group.register_for_widget(widgets.main_window.clone());
+        println!("ag: {:?}\n", relm4::main_application().list_actions());
 
         ComponentParts { model, widgets }
     }
@@ -116,8 +146,10 @@ impl relm4::SimpleComponent for AppModel {
     }
 }
 
-relm4::new_action_group!(WindowActionGroup, "win");
-relm4::new_stateless_action!(ActionQuit, WindowActionGroup, "quit");
+relm4::new_action_group!(BozoActionGroup, "bozo");
+relm4::new_stateless_action!(ActionQuit, BozoActionGroup, "quitquitquit");
+relm4::new_stateless_action!(ActionDown, BozoActionGroup, "down");
+relm4::new_stateless_action!(ActionUp, BozoActionGroup, "up");
 
 fn main() {
     let app = RelmApp::new("relm4.test.simple_manual");

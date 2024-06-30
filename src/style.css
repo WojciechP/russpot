@@ -4,6 +4,11 @@
     padding: 0.4em;
         background-image: none; border-image: none;
 }
+
+.playlistitem.has-cursor {
+    background-color: #cccccc;
+}
+
 .playlistitem .textpart {
     margin-left: 1em;
 }
