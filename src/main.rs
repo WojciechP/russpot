@@ -25,6 +25,7 @@ struct AppModel {
 #[derive(Debug)]
 enum AppInput {
     PlayNow,
+    SpircNow,
 }
 
 #[relm4::component]
@@ -92,6 +93,10 @@ impl relm4::SimpleComponent for AppModel {
                     println!("forwarding playnow");
                     AppInput::PlayNow
                 }
+                ActionsOutput::SpircNow => {
+                    println!("forwarding spirc");
+                    AppInput::SpircNow
+                }
             });
         let model = AppModel {
             spot: spot,
@@ -152,6 +157,12 @@ impl relm4::SimpleComponent for AppModel {
                     println!("cannot play, cursor is empty")
                 }
             },
+            AppInput::SpircNow => {
+                let spot = self.spot.clone();
+                _sender.oneshot_command(async move {
+                    spot.play_on_spirc().await;
+                })
+            }
         }
     }
 }
@@ -176,6 +187,7 @@ relm4::new_stateless_action!(ActionDown, BozoActionGroup, "down");
 relm4::new_stateless_action!(ActionUp, BozoActionGroup, "up");
 
 fn main() {
+    env_logger::init();
     let app = RelmApp::new("relm4.test.simple_manual");
     app.set_global_css(include_str!("style.css"));
     app.run::<AppModel>(0);
