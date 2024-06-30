@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use gtk::gdk_pixbuf::Pixbuf;
 use gtk::{gio, glib, prelude::*};
 use relm4::prelude::*;
@@ -12,6 +14,8 @@ pub struct PlaylistItem {
     spot: SpotConn,
     #[do_not_track]
     pub self_idx: DynamicIndex,
+    #[do_not_track]
+    pub widget_root: RefCell<Option<gtk::Button>>,
 
     simple: SimplifiedPlaylist,
     image: Option<Pixbuf>,
@@ -51,6 +55,7 @@ impl FactoryComponent for PlaylistItem {
 
     view! {
         #[root]
+        #[name="the_root"]
         gtk::Button {
             set_css_classes: &["playlistitem"],
             #[watch]
@@ -99,6 +104,7 @@ impl FactoryComponent for PlaylistItem {
             image: None::<Pixbuf>,
             has_cursor: false,
             self_idx: _index.clone(),
+            widget_root: RefCell::new(None),
             tracker: 0,
         };
         if let Some(img) = model.simple.images.first() {
@@ -111,6 +117,10 @@ impl FactoryComponent for PlaylistItem {
             });
         }
         model
+    }
+
+    fn post_view() {
+        *self.widget_root.borrow_mut() = Some(widgets.the_root.clone());
     }
 
     fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {

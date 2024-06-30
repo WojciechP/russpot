@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use futures::stream::TryStreamExt;
 use gtk::gdk_pixbuf::Pixbuf;
+use gtk::graphene::Point;
 use gtk::{glib, prelude::*};
 use relm4::factory::{FactoryVecDeque, FactoryVecDequeBuilder};
 use relm4::prelude::*;
@@ -16,6 +17,7 @@ pub struct DenseList {
     spot: SpotConn,
     items: FactoryVecDeque<PlaylistItem>,
     cursor: Option<DynamicIndex>,
+    scrollwin: gtk::ScrolledWindow,
 }
 
 #[derive(Debug)]
@@ -48,6 +50,7 @@ impl relm4::Component for DenseList {
 
     view! {
         #[root]
+        #[name="scrollwin"]
         gtk::ScrolledWindow {
             // set_policy:
 
@@ -70,13 +73,15 @@ impl relm4::Component for DenseList {
                     DenseListInput::MoveCursorTo(dyn_idx)
                 }
             });
-        let model = DenseList {
+        let mut model = DenseList {
             spot: init.spot,
             items,
             cursor: None,
+            scrollwin: gtk::ScrolledWindow::new(),
         };
         let list_view = model.items.widget();
         let widgets = view_output!();
+        model.scrollwin = widgets.scrollwin.clone();
 
         let spot = model.spot.clone();
         // TODO: this hardcodes library fetch, abstract away?
@@ -140,6 +145,35 @@ impl relm4::Component for DenseList {
                 if let Some(next) = next {
                     next.set_has_cursor(true);
                     self.cursor = Some(next.self_idx.clone());
+                    let point = next
+                        .widget_root
+                        .borrow()
+                        .as_ref()
+                        .unwrap()
+                        .compute_point(&self.scrollwin, &Point::new(0.0, 0.0))
+                        .unwrap();
+                    println!(
+                        "next item point relative to list root: {} {}",
+                        point.x(),
+                        point.y()
+                    );
+                    println!("current size: {}", self.scrollwin.height());
+                    let mut delta: f64 = 0.0;
+
+                    let height = self.scrollwin.height() as f64;
+                    let point_y = point.y() as f64;
+                    if point_y < 0.0 {
+                        delta = point_y - 20.0; // 20 margin
+                    }
+                    if point_y + 40.0 > height {
+                        delta = point_y + 40.0 - height;
+                    }
+                    if delta != 0.0 {
+                        let adj = self.scrollwin.vadjustment();
+                        println!("Correcting adjustment from {} by {}", adj.value(), delta);
+                        adj.set_value(adj.value() + delta);
+                        self.scrollwin.set_vadjustment(Some(&adj));
+                    }
                 } else {
                     println!("should move focus out in direction {}", delta);
                     self.cursor = None;
