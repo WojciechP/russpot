@@ -34,7 +34,6 @@ pub enum DenseListInput {
 #[derive(Debug)]
 pub enum DenseListOutput {}
 
-/// We allow loading items in a streaming manner: multiple messages with one item each.
 #[derive(Debug)]
 pub enum DenseListCommandOutput {}
 
@@ -90,7 +89,6 @@ impl relm4::Component for DenseList {
     }
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
-        println!("Received msg: {:?}", msg);
         match msg {
             DenseListInput::MoveCursorTo(dyn_idx) => {
                 let mut items = self.dense_items.guard();

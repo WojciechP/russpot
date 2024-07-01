@@ -11,6 +11,7 @@ use rspotify::clients::OAuthClient;
 
 use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::denselist::{DenseListInit, DenseListInput};
+use crate::components::switchview::{SwitchView, SwitchViewInit};
 use crate::spotconn::SpotConn;
 
 mod components;
@@ -22,6 +23,7 @@ struct AppModel {
 
     denselist: Controller<DenseList>,
     actions: Controller<Actions>,
+    switchview: Controller<SwitchView>,
 }
 
 #[derive(Debug)]
@@ -47,8 +49,6 @@ impl relm4::SimpleComponent for AppModel {
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
 
-
-
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_homogeneous: false,
@@ -56,6 +56,11 @@ impl relm4::SimpleComponent for AppModel {
                      denselist_widget -> gtk::Box{
                          set_vexpand: true,
                      },
+                },
+
+                #[local_ref]
+                switchview_widget -> gtk::Box {
+                    set_width_request: 200,
                 },
 
                 #[local_ref]
@@ -79,6 +84,10 @@ impl relm4::SimpleComponent for AppModel {
         // let spot_playlist_id = SpotifyId::from_base62("7EsmFgvsvdK7HXh5k5Esbt").unwrap();
         let _spot_track_id = SpotifyId::from_base62("416oYM4vj129L8BP7B0qlO").unwrap();
         let spot = SpotConn::new();
+
+        let switchview: Controller<SwitchView> = SwitchView::builder()
+            .launch(SwitchViewInit {})
+            .forward(sender.input_sender(), |msg| match msg {});
 
         let denselist: Controller<DenseList> = DenseList::builder()
             .launch(DenseListInit { spot: spot.clone() })
@@ -123,10 +132,12 @@ impl relm4::SimpleComponent for AppModel {
             spot: spot,
             counter,
             denselist,
+            switchview,
             actions: actions_model,
         };
         let denselist_widget = model.denselist.widget();
         let actions_widget = model.actions.widget();
+        let switchview_widget = model.switchview.widget();
 
         let widgets = view_output!();
 
