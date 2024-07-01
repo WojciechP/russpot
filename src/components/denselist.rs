@@ -22,13 +22,13 @@ pub struct DenseList {
 #[derive(Debug)]
 pub struct DenseListInit {
     pub spot: SpotConn,
-    // TODO: add an init option to choose which playlists to load?
 }
 
 #[derive(Debug)]
 pub enum DenseListInput {
     CursorMove(i32),
     MoveCursorTo(DynamicIndex),
+    AddItem(BlockInit),
 }
 
 #[derive(Debug)]
@@ -36,9 +36,7 @@ pub enum DenseListOutput {}
 
 /// We allow loading items in a streaming manner: multiple messages with one item each.
 #[derive(Debug)]
-pub enum DenseListCommandOutput {
-    ItemLoaded(SimplifiedPlaylist),
-}
+pub enum DenseListCommandOutput {}
 
 #[relm4::component(pub)]
 impl relm4::Component for DenseList {
@@ -88,19 +86,6 @@ impl relm4::Component for DenseList {
         let widgets = view_output!();
         model.scrollwin = widgets.scrollboxes.clone();
 
-        let spot = model.spot.clone();
-        // TODO: this hardcodes library fetch, abstract away?
-        sender.command(|out, shutdown| {
-            shutdown
-                .register(async move {
-                    let rspot = spot.rspot().await;
-                    let mut stream = rspot.current_user_playlists();
-                    while let Some(item) = stream.try_next().await.unwrap() {
-                        out.send(DenseListCommandOutput::ItemLoaded(item)).unwrap();
-                    }
-                })
-                .drop_on_shutdown()
-        });
         relm4::ComponentParts { model, widgets }
     }
 
@@ -155,21 +140,9 @@ impl relm4::Component for DenseList {
                     }
                 }
             }
-        }
-    }
-
-    fn update_cmd(
-        &mut self,
-        message: Self::CommandOutput,
-        _sender: ComponentSender<Self>,
-        _root: &Self::Root,
-    ) {
-        match message {
-            DenseListCommandOutput::ItemLoaded(playlist) => {
+            DenseListInput::AddItem(item) => {
                 let spot = self.spot.clone();
-                self.dense_items
-                    .guard()
-                    .push_back(BlockInit::SimplifiedPlaylist(playlist));
+                self.dense_items.guard().push_back(item);
             }
         }
     }

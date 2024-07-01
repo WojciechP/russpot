@@ -1,11 +1,13 @@
 use components::denselist::DenseList;
 use components::smallblock::BlockInit;
+use futures::TryStreamExt;
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
 use relm4::actions::{AccelsPlus, ActionName};
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
+use rspotify::clients::OAuthClient;
 
 use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::denselist::{DenseListInit, DenseListInput};
@@ -81,6 +83,25 @@ impl relm4::SimpleComponent for AppModel {
         let denselist: Controller<DenseList> = DenseList::builder()
             .launch(DenseListInit { spot: spot.clone() })
             .forward(sender.input_sender(), |msg| match msg {});
+
+        let denselist_sender = denselist.sender().clone();
+        let denselist_spot = spot.clone();
+        sender.command(move |out, shutdown| {
+            shutdown
+                .register(async move {
+                    let spot = denselist_spot.rspot().await;
+
+                    let mut stream = spot.current_user_playlists();
+                    while let Some(simple_playlist) = stream.try_next().await.unwrap() {
+                        denselist_sender
+                            .send(DenseListInput::AddItem(BlockInit::SimplifiedPlaylist(
+                                simple_playlist,
+                            )))
+                            .unwrap();
+                    }
+                })
+                .drop_on_shutdown()
+        });
 
         let menu_model = gtk::gio::Menu::new();
         menu_model.append(Some("Down"), Some(&ActionDown::action_name()));
