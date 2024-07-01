@@ -19,23 +19,32 @@ pub struct DenseList {
     scrollwin: gtk::ScrolledWindow,
 }
 
+/// The source of all Spotify items in the list.
+/// Spotify docs sometimes refer to this as "context".
+#[derive(Debug)]
+pub enum Source {
+    UserPlaylists,
+}
+
 #[derive(Debug)]
 pub struct DenseListInit {
     pub spot: SpotConn,
+    pub source: Source,
 }
 
 #[derive(Debug)]
 pub enum DenseListInput {
     CursorMove(i32),
     MoveCursorTo(DynamicIndex),
-    AddItem(BlockInit),
 }
 
 #[derive(Debug)]
 pub enum DenseListOutput {}
 
 #[derive(Debug)]
-pub enum DenseListCommandOutput {}
+pub enum DenseListCommandOutput {
+    AddItem(BlockInit),
+}
 
 #[relm4::component(pub)]
 impl relm4::Component for DenseList {
@@ -84,6 +93,16 @@ impl relm4::Component for DenseList {
 
         let widgets = view_output!();
         model.scrollwin = widgets.scrollboxes.clone();
+
+        let spot = model.spot.clone();
+        sender.command(move |out, shutdown| {
+            spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
+                out.send(DenseListCommandOutput::AddItem(
+                    BlockInit::SimplifiedPlaylist(sp),
+                ))
+                .unwrap();
+            })
+        });
 
         relm4::ComponentParts { model, widgets }
     }
@@ -138,7 +157,16 @@ impl relm4::Component for DenseList {
                     }
                 }
             }
-            DenseListInput::AddItem(item) => {
+        }
+    }
+    fn update_cmd(
+        &mut self,
+        message: Self::CommandOutput,
+        sender: ComponentSender<Self>,
+        root: &Self::Root,
+    ) {
+        match message {
+            DenseListCommandOutput::AddItem(item) => {
                 let spot = self.spot.clone();
                 self.dense_items.guard().push_back(item);
             }

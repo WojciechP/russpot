@@ -1,3 +1,4 @@
+use futures::TryStreamExt;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -19,7 +20,7 @@ use librespot::{
     metadata::{Metadata, Track},
 };
 use rspotify::http::HttpError;
-use rspotify::model::{PlayContextId, PlaylistId};
+use rspotify::model::{PlayContextId, PlaylistId, SimplifiedPlaylist};
 use rspotify::{clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
 use rspotify::{ClientError, Config};
 use tokio::sync::OnceCell;
@@ -135,6 +136,32 @@ impl SpotConn {
             }
         }
         self.raw_rspot.clone()
+    }
+
+    /// Fetches all the user playlists and emits them via the consumer function asynchronously.
+    pub async fn current_user_playlists<F>(&self, f: F)
+    where
+        F: Fn(SimplifiedPlaylist),
+    {
+        let spot = self.rspot().await;
+
+        let mut stream = spot.current_user_playlists();
+        while let Some(simple_playlist) = stream.try_next().await.unwrap() {
+            f(simple_playlist);
+        }
+    }
+
+    pub async fn current_user_playlists_until_shutdown<F>(
+        self,
+        shutdown: relm4::ShutdownReceiver,
+        f: F,
+    ) where
+        F: Fn(SimplifiedPlaylist),
+    {
+        shutdown
+            .register(async { self.current_user_playlists(f).await })
+            .drop_on_shutdown()
+            .await
     }
 
     pub async fn play_playlist<'a>(&self, id: PlaylistId<'a>) {

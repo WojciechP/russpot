@@ -10,7 +10,7 @@ use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 use rspotify::clients::OAuthClient;
 
 use crate::components::actions::{Actions, ActionsOutput};
-use crate::components::denselist::{DenseListInit, DenseListInput};
+use crate::components::denselist::{DenseListInit, DenseListInput, Source};
 use crate::components::switchview::{SwitchView, SwitchViewInit};
 use crate::spotconn::SpotConn;
 
@@ -90,27 +90,23 @@ impl relm4::SimpleComponent for AppModel {
             .forward(sender.input_sender(), |msg| match msg {});
 
         let denselist: Controller<DenseList> = DenseList::builder()
-            .launch(DenseListInit { spot: spot.clone() })
+            .launch(DenseListInit {
+                spot: spot.clone(),
+                source: Source::UserPlaylists,
+            })
             .forward(sender.input_sender(), |msg| match msg {});
 
+        /*
         let denselist_sender = denselist.sender().clone();
         let denselist_spot = spot.clone();
         sender.command(move |out, shutdown| {
-            shutdown
-                .register(async move {
-                    let spot = denselist_spot.rspot().await;
-
-                    let mut stream = spot.current_user_playlists();
-                    while let Some(simple_playlist) = stream.try_next().await.unwrap() {
-                        denselist_sender
-                            .send(DenseListInput::AddItem(BlockInit::SimplifiedPlaylist(
-                                simple_playlist,
-                            )))
-                            .unwrap();
-                    }
-                })
-                .drop_on_shutdown()
+            denselist_spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
+                denselist_sender
+                    .send(DenseListCommandOutput::AddItem(BlockInit::SimplifiedPlaylist(sp)))
+                    .unwrap();
+            })
         });
+        */
 
         let menu_model = gtk::gio::Menu::new();
         menu_model.append(Some("Down"), Some(&ActionDown::action_name()));

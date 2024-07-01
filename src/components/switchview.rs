@@ -2,7 +2,7 @@ use relm4::{factory::FactoryVecDeque, prelude::*};
 
 use crate::spotconn::SpotConn;
 
-use super::denselist::{DenseList, DenseListInit};
+use super::denselist::{DenseList, DenseListInit, Source};
 
 pub struct SwitchView {
     views: FactoryVecDeque<SwitchViewItem>,
@@ -97,6 +97,7 @@ impl FactoryComponent for SwitchViewItem {
     fn init_model(init: Self::Init, index: &Self::Index, sender: FactorySender<Self>) -> Self {
         let var_name = DenseListInit {
             spot: SpotConn::new(),
+            source: Source::UserPlaylists,
         };
         let denselist = DenseList::builder()
             .launch(var_name)
