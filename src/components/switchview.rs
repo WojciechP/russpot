@@ -50,8 +50,13 @@ impl relm4::Component for SwitchView {
         let mut views = FactoryVecDeque::<SwitchViewItem>::builder()
             .launch(gtk::Stack::default())
             .forward(sender.output_sender(), move |out| match out {});
-        views.guard().push_back(SwitchViewItemInit::UserPlaylists);
-        views.guard().push_back(SwitchViewItemInit::UserPlaylists);
+        // TODO: remove hardcoded two views
+        views.guard().push_back(SwitchViewItemInit {
+            spot: SpotConn::new(), //TODO: accept from parent
+            layout: SwitchViewItemLayout::SingleDenseList(Source::PlaylistUri(
+                "spotify/playlist/1zIYbRl8ee7JIIYOPDrEJ6".to_string(),
+            )),
+        });
         let model = SwitchView { views };
         let view_widgets = model.views.widget();
         let widgets = view_output!();
@@ -66,8 +71,14 @@ pub struct SwitchViewItem {
 }
 
 #[derive(Debug)]
-pub enum SwitchViewItemInit {
-    UserPlaylists,
+pub enum SwitchViewItemLayout {
+    SingleDenseList(Source),
+}
+
+#[derive(Debug)]
+pub struct SwitchViewItemInit {
+    spot: SpotConn,
+    layout: SwitchViewItemLayout,
 }
 
 #[derive(Debug)]
@@ -103,12 +114,12 @@ impl FactoryComponent for SwitchViewItem {
     }
 
     fn init_model(init: Self::Init, index: &Self::Index, sender: FactorySender<Self>) -> Self {
-        let var_name = DenseListInit {
-            spot: SpotConn::new(),
-            source: Source::UserPlaylists,
-        };
+        let SwitchViewItemLayout::SingleDenseList(ref source) = init.layout;
         let denselist = DenseList::builder()
-            .launch(var_name)
+            .launch(DenseListInit {
+                spot: init.spot.clone(),
+                source: source.clone(),
+            })
             .forward(sender.output_sender(), |msg| match msg {});
         SwitchViewItem { init, denselist }
     }

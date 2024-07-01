@@ -1,4 +1,5 @@
 use futures::TryStreamExt;
+use log::debug;
 use std::borrow::BorrowMut;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -20,8 +21,8 @@ use librespot::{
     metadata::{Metadata, Track},
 };
 use rspotify::http::HttpError;
-use rspotify::model::{PlayContextId, PlaylistId, SimplifiedPlaylist};
-use rspotify::{clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
+use rspotify::model::{FullTrack, Id, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist};
+use rspotify::{clients::BaseClient, clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
 use rspotify::{ClientError, Config};
 use tokio::sync::OnceCell;
 
@@ -160,6 +161,31 @@ impl SpotConn {
     {
         shutdown
             .register(async { self.current_user_playlists(f).await })
+            .drop_on_shutdown()
+            .await
+    }
+
+    pub async fn tracks_in_playlist<F>(self, shutdown: relm4::ShutdownReceiver, uri: String, f: F)
+    where
+        F: Fn(FullTrack),
+    {
+        shutdown
+            .register(async {
+                let rspot = self.rspot().await;
+                let mut stream = rspot.playlist_items(
+                    PlaylistId::from_uri(&uri).unwrap(),
+                    None, /*fields*/
+                    None, /*market*/
+                );
+                while let Some(item) = stream.try_next().await.unwrap() {
+                    match item.track {
+                        Some(PlayableItem::Track(ft)) => f(ft),
+                        _ => {
+                            debug!("Skipping non-track item {:?}", item,)
+                        }
+                    }
+                }
+            })
             .drop_on_shutdown()
             .await
     }

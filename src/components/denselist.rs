@@ -4,8 +4,8 @@ use gtk::graphene::Point;
 use gtk::prelude::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
-use rspotify::clients::OAuthClient;
 use rspotify::model::SimplifiedPlaylist;
+use rspotify::{clients::OAuthClient, model::PlaylistId};
 
 use crate::spotconn::SpotConn;
 
@@ -21,9 +21,10 @@ pub struct DenseList {
 
 /// The source of all Spotify items in the list.
 /// Spotify docs sometimes refer to this as "context".
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Source {
     UserPlaylists,
+    PlaylistUri(String),
 }
 
 #[derive(Debug)]
@@ -95,15 +96,7 @@ impl relm4::Component for DenseList {
         let widgets = view_output!();
         model.scrollwin = widgets.scrollboxes.clone();
 
-        let spot = model.spot.clone();
-        sender.command(move |out, shutdown| {
-            spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
-                out.send(DenseListCommandOutput::AddItem(
-                    BlockInit::SimplifiedPlaylist(sp),
-                ))
-                .unwrap();
-            })
-        });
+        DenseList::init_data_loading(&model.spot, init.source, &sender);
 
         relm4::ComponentParts { model, widgets }
     }
@@ -208,6 +201,25 @@ impl DenseList {
     pub fn current_item(&self) -> Option<BlockInit> {
         let item = self.dense_items.get(self.cursor.clone()?.current_index())?;
         Some(item.sb.model().get_content().clone())
+    }
+
+    fn init_data_loading(spot: &SpotConn, source: Source, sender: &ComponentSender<DenseList>) {
+        let spot = spot.clone();
+        match source {
+            Source::UserPlaylists => sender.command(move |out, shutdown| {
+                spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
+                    out.emit(DenseListCommandOutput::AddItem(
+                        BlockInit::SimplifiedPlaylist(sp),
+                    ))
+                })
+            }),
+
+            Source::PlaylistUri(uri) => sender.command(move |out, shutdown| {
+                spot.tracks_in_playlist(shutdown, uri, move |ft| {
+                    out.emit(DenseListCommandOutput::AddItem(BlockInit::FullTrack(ft)))
+                })
+            }),
+        }
     }
 }
 
