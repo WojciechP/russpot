@@ -8,6 +8,7 @@ use super::denselist::{DenseList, DenseListInit, DenseListInput, Source};
 
 pub struct SwitchView {
     views: FactoryVecDeque<SwitchViewItem>,
+    gtk_stack: gtk::Stack,
 }
 
 #[derive(Debug)]
@@ -40,12 +41,16 @@ impl relm4::Component for SwitchView {
         #[root]
         gtk::Box::new(gtk::Orientation::Horizontal, 0) {
             set_vexpand: true,
-                set_height_request: 400,
+            set_height_request: 400,
             #[local_ref]
-            view_widgets -> gtk::Box {
+            view_widgets -> gtk::Stack {
                 set_vexpand: true,
             }
         }
+    }
+
+    fn post_view() {
+        view_widgets.set_visible_child(&view_widgets.last_child().unwrap());
     }
 
     fn init(
@@ -54,16 +59,20 @@ impl relm4::Component for SwitchView {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let mut views = FactoryVecDeque::<SwitchViewItem>::builder()
-            .launch(gtk::Box::new(gtk::Orientation::Horizontal, 0))
+            .launch(gtk::Stack::new())
             .forward(sender.output_sender(), move |out| match out {});
         // TODO: remove hardcoded two views
         views.guard().push_back(SwitchViewItemInit {
             spot: SpotConn::new(), //TODO: accept from parent
             layout: SwitchViewItemLayout::SingleDenseList(Source::UserPlaylists),
         });
-        let model = SwitchView { views };
+        let mut model = SwitchView {
+            views,
+            gtk_stack: gtk::Stack::default(),
+        };
         let view_widgets = model.views.widget();
         let widgets = view_output!();
+        model.gtk_stack = view_widgets.clone();
         ComponentParts { model, widgets }
     }
 
@@ -105,6 +114,12 @@ impl relm4::Component for SwitchView {
     }
 }
 
+impl SwitchView {
+    fn last_page_widget(&self) -> gtk::Widget {
+        self.gtk_stack.last_child().unwrap()
+    }
+}
+
 #[derive(Debug)]
 pub struct SwitchViewItem {
     init: SwitchViewItemInit,
@@ -134,7 +149,7 @@ impl FactoryComponent for SwitchViewItem {
     type Input = SwitchViewItemInput;
     type Output = SwitchViewItemOutput;
     type CommandOutput = ();
-    type ParentWidget = gtk::Box;
+    type ParentWidget = gtk::Stack;
 
     view! {
         #[root]
