@@ -58,6 +58,7 @@ impl relm4::Component for DenseList {
         gtk::Box {
             set_orientation: gtk::Orientation::Horizontal,
             set_hexpand: true,
+            set_vexpand: true,
             #[name="scrollboxes"]
             gtk::ScrolledWindow {
                 set_hexpand: true,

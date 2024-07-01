@@ -1,3 +1,4 @@
+use gtk::prelude::*;
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
 use crate::spotconn::SpotConn;
@@ -32,8 +33,12 @@ impl relm4::Component for SwitchView {
     view! {
         #[root]
         gtk::Box::new(gtk::Orientation::Horizontal, 0) {
+            set_vexpand: true,
+                set_height_request: 400,
             #[local_ref]
-            view_widgets -> gtk::Box {}
+            view_widgets -> gtk::Stack {
+                set_vexpand: true,
+            }
         }
     }
 
@@ -43,7 +48,7 @@ impl relm4::Component for SwitchView {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let mut views = FactoryVecDeque::<SwitchViewItem>::builder()
-            .launch(gtk::Box::default())
+            .launch(gtk::Stack::default())
             .forward(sender.output_sender(), move |out| match out {});
         views.guard().push_back(SwitchViewItemInit::UserPlaylists);
         views.guard().push_back(SwitchViewItemInit::UserPlaylists);
@@ -77,11 +82,13 @@ impl FactoryComponent for SwitchViewItem {
     type Input = SwitchViewItemInput;
     type Output = SwitchViewItemOutput;
     type CommandOutput = ();
-    type ParentWidget = gtk::Box; // TODO: gtk::Stack?
+    type ParentWidget = gtk::Stack;
 
     view! {
         #[root]
         gtk::Box::new(gtk::Orientation::Vertical, 0) {
+            set_homogeneous: false,
+            set_vexpand: true,
             gtk::Label {
                 set_label: "Switch view item"
             },
@@ -90,7 +97,8 @@ impl FactoryComponent for SwitchViewItem {
                     set_label: "Switch view content"
                 },
             },
-            self.denselist.widget() {}
+            self.denselist.widget() {
+            },
         }
     }
 
