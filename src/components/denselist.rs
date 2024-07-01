@@ -5,6 +5,7 @@ use gtk::prelude::*;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use rspotify::model::SimplifiedPlaylist;
+use rspotify::prelude::*;
 use rspotify::{clients::OAuthClient, model::PlaylistId};
 
 use crate::spotconn::SpotConn;
@@ -19,6 +20,24 @@ pub struct DenseList {
     scrollwin: gtk::ScrolledWindow,
 }
 
+impl DenseList {
+    /// Obtains an init struct for descending into currently selected item.
+    /// Returns None if no item is selected, or the selected item
+    /// cannot be descended into (it's a track).
+    pub fn descend(&self) -> Option<DenseListInit> {
+        let item = self
+            .dense_items
+            .get(self.cursor.as_ref()?.current_index())?;
+        match item.sb.model().get_content() {
+            BlockInit::FullTrack(_) => None,
+            BlockInit::SimplifiedPlaylist(sp) => Some(DenseListInit {
+                spot: self.spot.clone(),
+                source: Source::PlaylistUri(sp.id.uri().to_owned()),
+            }),
+        }
+    }
+}
+
 /// The source of all Spotify items in the list.
 /// Spotify docs sometimes refer to this as "context".
 #[derive(Debug, Clone)]
@@ -27,7 +46,7 @@ pub enum Source {
     PlaylistUri(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DenseListInit {
     pub spot: SpotConn,
     pub source: Source,

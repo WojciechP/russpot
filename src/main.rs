@@ -7,7 +7,7 @@ use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 
 use crate::components::actions::{Actions, ActionsOutput};
-use crate::components::switchview::{SwitchView, SwitchViewInit};
+use crate::components::switchview::{SwitchView, SwitchViewInit, SwitchViewInput};
 use crate::spotconn::SpotConn;
 
 mod components;
@@ -106,41 +106,62 @@ impl relm4::SimpleComponent for AppModel {
 
         let app = relm4::main_application();
 
-        /*
-        * TODO: forward keyboard navigation via switchview, or move the code there
-               app.set_accelerators_for_action::<ActionQuit>(&["<primary>Q"]);
-               let denselist_sender = model.denselist.sender().clone();
-               let a_quit: RelmAction<ActionQuit> = RelmAction::new_stateless(move |_| {
-                   println!("quit");
-                   relm4::main_application().quit();
-                   denselist_sender.emit(DenseListInput::CursorMove(1));
-               });
-               let _denselist_sender = model.denselist.sender().clone();
+        app.set_accelerators_for_action::<ActionQuit>(&["<primary>Q"]);
+        let denselist_sender = model.switchview.sender().clone();
+        let a_quit: RelmAction<ActionQuit> = RelmAction::new_stateless(move |_| {
+            println!("quit");
+            relm4::main_application().quit();
+            denselist_sender.emit(SwitchViewInput::CursorMove(1));
+        });
+        let _denselist_sender = model.switchview.sender().clone();
 
-               app.set_accelerators_for_action::<ActionDown>(&["J"]);
-               let denselist_sender = model.denselist.sender().clone();
-               let a_down: RelmAction<ActionDown> = RelmAction::new_stateless(move |_| {
-                   //         app.quit();
-                   println!("actin down");
-                   denselist_sender
-                       .send(DenseListInput::CursorMove(1))
-                       .unwrap();
-               });
-               app.set_accelerators_for_action::<ActionUp>(&["K"]);
-               let denselist_sender = model.denselist.sender().clone();
-               let a_up: RelmAction<ActionUp> = RelmAction::new_stateless(move |_| {
-                   println!("actin up");
-                   denselist_sender
-                       .send(DenseListInput::CursorMove(-1))
-                       .unwrap();
-               });
-               let mut action_group = RelmActionGroup::<BozoActionGroup>::new();
-               action_group.add_action(a_down);
-               action_group.add_action(a_up);
-               action_group.add_action(a_quit);
-               action_group.register_for_widget(widgets.main_window.clone());
-               println!("ag: {:?}\n", relm4::main_application().list_actions());
-               */
+        app.set_accelerators_for_action::<ActionDown>(&["J"]);
+        let denselist_sender = model.switchview.sender().clone();
+        let a_down: RelmAction<ActionDown> = RelmAction::new_stateless(move |_| {
+            //         app.quit();
+            println!("actin down");
+            denselist_sender
+                .send(SwitchViewInput::CursorMove(1))
+                .unwrap();
+        });
+
+        app.set_accelerators_for_action::<ActionUp>(&["K"]);
+        let denselist_sender = model.switchview.sender().clone();
+        let a_up: RelmAction<ActionUp> = RelmAction::new_stateless(move |_| {
+            println!("actin up");
+            denselist_sender
+                .send(SwitchViewInput::CursorMove(-1))
+                .unwrap();
+        });
+
+        app.set_accelerators_for_action::<ActionDescend>(&["O"]); // O for Open
+        let denselist_sender = model.switchview.sender().clone();
+        let a_descend: RelmAction<ActionDescend> = RelmAction::new_stateless(move |_| {
+            println!("actin descend");
+            denselist_sender.send(SwitchViewInput::NavDescend).unwrap();
+        });
+        app.set_accelerators_for_action::<ActionBack>(&["I"]); // I because it's on the left side of O
+        let denselist_sender = model.switchview.sender().clone();
+        let a_back: RelmAction<ActionBack> = RelmAction::new_stateless(move |_| {
+            println!("actin back");
+            denselist_sender.send(SwitchViewInput::NavBack).unwrap();
+        });
+
+        app.set_accelerators_for_action::<ActionPlayNow>(&["<shift>P"]);
+        let denselist_sender = model.switchview.sender().clone();
+        let a_play: RelmAction<ActionPlayNow> = RelmAction::new_stateless(move |_| {
+            println!("actin play - not implemented");
+        });
+
+        let mut action_group = RelmActionGroup::<BozoActionGroup>::new();
+        action_group.add_action(a_down);
+        action_group.add_action(a_up);
+        action_group.add_action(a_quit);
+        action_group.add_action(a_descend);
+        action_group.add_action(a_back);
+        action_group.add_action(a_play);
+        action_group.register_for_widget(widgets.main_window.clone());
+        println!("ag: {:?}\n", relm4::main_application().list_actions());
 
         ComponentParts { model, widgets }
     }
@@ -188,6 +209,9 @@ relm4::new_action_group!(BozoActionGroup, "bozo");
 relm4::new_stateless_action!(ActionQuit, BozoActionGroup, "quitquitquit");
 relm4::new_stateless_action!(ActionDown, BozoActionGroup, "down");
 relm4::new_stateless_action!(ActionUp, BozoActionGroup, "up");
+relm4::new_stateless_action!(ActionDescend, BozoActionGroup, "descend");
+relm4::new_stateless_action!(ActionBack, BozoActionGroup, "back");
+relm4::new_stateless_action!(ActionPlayNow, BozoActionGroup, "play_now");
 
 fn main() {
     env_logger::init();

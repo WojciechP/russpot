@@ -1,9 +1,10 @@
 use gtk::prelude::*;
+use log::debug;
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
 use crate::spotconn::SpotConn;
 
-use super::denselist::{DenseList, DenseListInit, Source};
+use super::denselist::{DenseList, DenseListInit, DenseListInput, Source};
 
 pub struct SwitchView {
     views: FactoryVecDeque<SwitchViewItem>,
@@ -14,7 +15,12 @@ pub struct SwitchViewInit {}
 
 #[derive(Debug)]
 pub enum SwitchViewInput {
+    /// Move cursor down (+1) or up (-1).
     CursorMove(i32),
+    /// Descend into selected playlist or album.
+    NavDescend,
+    /// Move back up to the previews view.
+    NavBack,
 }
 
 #[derive(Debug)]
@@ -36,7 +42,7 @@ impl relm4::Component for SwitchView {
             set_vexpand: true,
                 set_height_request: 400,
             #[local_ref]
-            view_widgets -> gtk::Stack {
+            view_widgets -> gtk::Box {
                 set_vexpand: true,
             }
         }
@@ -48,19 +54,54 @@ impl relm4::Component for SwitchView {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let mut views = FactoryVecDeque::<SwitchViewItem>::builder()
-            .launch(gtk::Stack::default())
+            .launch(gtk::Box::new(gtk::Orientation::Horizontal, 0))
             .forward(sender.output_sender(), move |out| match out {});
         // TODO: remove hardcoded two views
         views.guard().push_back(SwitchViewItemInit {
             spot: SpotConn::new(), //TODO: accept from parent
-            layout: SwitchViewItemLayout::SingleDenseList(Source::PlaylistUri(
-                "spotify/playlist/1zIYbRl8ee7JIIYOPDrEJ6".to_string(),
-            )),
+            layout: SwitchViewItemLayout::SingleDenseList(Source::UserPlaylists),
         });
         let model = SwitchView { views };
         let view_widgets = model.views.widget();
         let widgets = view_output!();
         ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
+        match message {
+            SwitchViewInput::CursorMove(delta) => {
+                self.views
+                    .guard()
+                    .back()
+                    .expect("page stack cannot be empty")
+                    .denselist
+                    .emit(DenseListInput::CursorMove(delta));
+            }
+            SwitchViewInput::NavDescend => {
+                let mut pages = self.views.guard();
+                let maybe_dli = {
+                    let last_page = pages.back().expect("page stack cannot be empty");
+                    last_page.denselist.model().descend()
+                };
+                if let Some(dli) = maybe_dli {
+                    debug!("descending into {:?}", dli);
+                    pages.push_back(SwitchViewItemInit {
+                        spot: dli.spot.clone(),
+                        layout: SwitchViewItemLayout::SingleDenseList(dli.source),
+                    });
+                } else {
+                    debug!("cannot descend");
+                }
+            }
+            SwitchViewInput::NavBack => {
+                let mut pages = self.views.guard();
+                if pages.len() == 1 {
+                    debug!("cannot go back up: already at the root");
+                } else {
+                    pages.pop_back();
+                }
+            }
+        }
     }
 }
 
@@ -93,7 +134,7 @@ impl FactoryComponent for SwitchViewItem {
     type Input = SwitchViewItemInput;
     type Output = SwitchViewItemOutput;
     type CommandOutput = ();
-    type ParentWidget = gtk::Stack;
+    type ParentWidget = gtk::Box;
 
     view! {
         #[root]
