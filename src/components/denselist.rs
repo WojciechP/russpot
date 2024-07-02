@@ -3,7 +3,7 @@ use gtk::prelude::*;
 use log::warn;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
-use rspotify::prelude::*;
+use rspotify::{model::Offset, prelude::*};
 
 use crate::spotconn::{model::SpotItem, SpotConn};
 
@@ -32,6 +32,18 @@ impl DenseList {
                 source: Source::PlaylistUri(sp.id.uri().to_owned()),
             }),
         }
+    }
+
+    // Reutrns an rspotify PlayContext for the collection, including the cursor position.
+    // TODO: currently this actually starts the child immediately, not the collection.
+    pub fn play_context(&self) -> Option<(PlayContextId<'static>, Option<Offset>)> {
+        let item = self
+            .dense_items
+            .get(self.cursor.as_ref()?.current_index())?;
+        Some((
+            item.sb.model().get_content().context_id()?.into_static(),
+            None,
+        ))
     }
 }
 

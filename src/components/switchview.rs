@@ -120,6 +120,10 @@ impl SwitchView {
     fn last_page_widget(&self) -> gtk::Widget {
         self.gtk_stack.last_child().unwrap()
     }
+
+    pub fn current_list(&self) -> &Controller<DenseList> {
+        &self.views.back().unwrap().denselist
+    }
 }
 
 #[derive(Debug)]

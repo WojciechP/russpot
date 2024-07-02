@@ -33,6 +33,15 @@ impl SpotItem {
         .as_ref()
         .map(|img| img.url.as_str())
     }
+
+    /// Optional PlayContextId for the collection (for playlists and albums).
+    /// None if the collection cannot be played directly.
+    pub fn context_id(&self) -> Option<PlayContextId<'_>> {
+        match self {
+            SpotItem::Track(_) => None,
+            SpotItem::Playlist(sp) => Some(PlayContextId::Playlist(sp.id.clone())),
+        }
+    }
 }
 
 impl std::fmt::Debug for SpotItem {
@@ -53,14 +62,6 @@ impl SpotCollection {
         match self {
             SpotCollection::UserPlaylists => "Saved playlists",
             SpotCollection::Playlist(sp) => &sp.name,
-        }
-    }
-    /// Optional PlayContextId for the collection (for playlists and albums).
-    /// None if the collection cannot be played directly.
-    pub fn context_id(&self) -> Option<PlayContextId<'_>> {
-        match self {
-            SpotCollection::UserPlaylists => None,
-            SpotCollection::Playlist(sp) => Some(PlayContextId::Playlist(sp.id.clone())),
         }
     }
 }

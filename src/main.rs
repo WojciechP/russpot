@@ -2,6 +2,7 @@
 #![allow(unused_variables)]
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
+use log::debug;
 use relm4::actions::{AccelsPlus, ActionName};
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::{self, Component, ComponentController, Controller};
@@ -168,7 +169,21 @@ impl relm4::SimpleComponent for AppModel {
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
         match message {
             AppInput::PlayNow => {
-                todo!("forward PlayNow to switchview?")
+                if let Some((ctx, offset)) = self
+                    .switchview
+                    .model()
+                    .current_list()
+                    .model()
+                    .play_context()
+                {
+                    debug!("play now -> ctx is some");
+                    let spot = self.spot.clone();
+                    _sender.oneshot_command(async move {
+                        spot.play_context(ctx, offset).await;
+                    })
+                } else {
+                    debug!("playnow -> no ctx");
+                }
             }
             /*
             AppInput::PlayNow => match self.denselist.model().current_item() {

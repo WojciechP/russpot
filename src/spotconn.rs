@@ -23,7 +23,9 @@ use librespot::{
     discovery::Credentials,
 };
 use rspotify::http::HttpError;
-use rspotify::model::{FullTrack, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist};
+use rspotify::model::{
+    FullTrack, Offset, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist,
+};
 use rspotify::{clients::BaseClient, clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
 use rspotify::{ClientError, Config};
 use tokio::sync::OnceCell;
@@ -190,6 +192,18 @@ impl SpotConn {
             })
             .drop_on_shutdown()
             .await
+    }
+
+    pub async fn play_context(&self, ctx: PlayContextId<'_>, offset: Option<Offset>) {
+        self.rspot()
+            .await
+            .start_context_playback(
+                ctx, None,   /* device id*/
+                offset, /* offset */
+                None,   /* Position */
+            )
+            .await
+            .expect("failed to start context playback")
     }
 
     pub async fn play_playlist<'a>(&self, id: PlaylistId<'a>) {
