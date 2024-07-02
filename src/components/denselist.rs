@@ -1,6 +1,6 @@
 use gtk::graphene::Point;
 use gtk::prelude::*;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use rspotify::{model::Offset, prelude::*};
@@ -158,10 +158,6 @@ impl relm4::Component for DenseList {
                     .clone()
                     .and_then(|cursor| items.get_mut(cursor.current_index()))
                 {
-                    println!(
-                        "Clearing previous cursor {}",
-                        self.cursor.clone().unwrap().current_index()
-                    );
                     item.has_cursor = false;
                 }
                 match items.get_mut(dyn_idx.current_index()) {
@@ -170,7 +166,7 @@ impl relm4::Component for DenseList {
                         self.cursor = Some(dyn_idx);
                         move_focus_to = Some(item.sb.widget().clone());
                     }
-                    None => println!("cannot set cursor, message back up?"),
+                    None => error!("cannot set cursor, message back up?"),
                 }
                 drop(items); // release guard on items to be able to call ensure_visible
                 if let Some(next) = move_focus_to {
@@ -204,7 +200,7 @@ impl relm4::Component for DenseList {
                         .input_sender()
                         .emit(DenseListInput::MoveCursorTo(next.self_idx.clone())),
                     None => {
-                        println!("moving out of the list!") // TODO: send a message?
+                        error!("should never happen: next_id is within range, yet no child.")
                     }
                 }
             }
@@ -231,12 +227,6 @@ impl DenseList {
         let point = widget
             .compute_point(&self.scrollwin, &Point::new(0.0, 0.0))
             .unwrap();
-        println!(
-            "next item point relative to list root: {} {}",
-            point.x(),
-            point.y()
-        );
-        println!("current size: {}", self.scrollwin.height());
         let mut delta: f64 = 0.0;
 
         let height = self.scrollwin.height() as f64;
@@ -249,7 +239,7 @@ impl DenseList {
         }
         if delta != 0.0 {
             let adj = self.scrollwin.vadjustment();
-            println!("Correcting adjustment from {} by {}", adj.value(), delta);
+            debug!("Correcting adjustment from {} by {}", adj.value(), delta);
             adj.set_value(adj.value() + delta);
             self.scrollwin.set_vadjustment(Some(&adj));
         }

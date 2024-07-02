@@ -20,6 +20,20 @@ impl SpotItem {
         }
     }
 
+    /// Name of the artist (or the owner user for playlists).
+    pub fn artist(&self) -> String {
+        match self {
+            SpotItem::Track(ft) => ft
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
+            SpotItem::Playlist(sp) => sp.owner.display_name.clone().unwrap_or("".to_string()),
+            SpotItem::UserPlaylists => "You".to_string(),
+        }
+    }
+
     /// Returns a Spotify URI, like "spotify:album:XXX".
     pub fn uri(&self) -> Option<String> {
         match self {
