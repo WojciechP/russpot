@@ -1,13 +1,15 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+
 use gtk::prelude::*;
-use log::debug;
+use log::{debug, error};
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
 use super::denselist::{DenseList, DenseListInit, DenseListInput};
 use crate::spotconn::{model::SpotItem, SpotConn};
 
 pub struct SwitchView {
+    spot: SpotConn,
     views: FactoryVecDeque<SwitchViewItem>,
     gtk_stack: gtk::Stack,
 }
@@ -23,6 +25,10 @@ pub enum SwitchViewInput {
     NavDescend,
     /// Move back up to the previews view.
     NavBack,
+    /// Reset the view to saved playlists.
+    NavResetPlaylists,
+    /// Reset the view to search page.
+    NavResetSearch,
 }
 
 #[derive(Debug)]
@@ -59,21 +65,20 @@ impl relm4::Component for SwitchView {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut views = FactoryVecDeque::<SwitchViewItem>::builder()
+        let views = FactoryVecDeque::<SwitchViewItem>::builder()
             .launch(gtk::Stack::new())
             .forward(sender.output_sender(), move |out| match out {});
-        // TODO: remove hardcoded two views
-        views.guard().push_back(SwitchViewItemInit {
-            spot: SpotConn::new(), //TODO: accept from parent
-            layout: SwitchViewItemLayout::SingleDenseList(SpotItem::UserPlaylists),
-        });
         let mut model = SwitchView {
+            spot: SpotConn::new(), //TODO: accept from parent
             views,
             gtk_stack: gtk::Stack::default(),
         };
         let view_widgets = model.views.widget();
         let widgets = view_output!();
         model.gtk_stack = view_widgets.clone();
+        sender
+            .input_sender()
+            .emit(SwitchViewInput::NavResetPlaylists);
         ComponentParts { model, widgets }
     }
 
@@ -110,6 +115,17 @@ impl relm4::Component for SwitchView {
                 } else {
                     pages.pop_back();
                 }
+            }
+            SwitchViewInput::NavResetPlaylists => {
+                let mut pages = self.views.guard();
+                pages.clear();
+                pages.push_back(SwitchViewItemInit {
+                    spot: self.spot.clone(),
+                    layout: SwitchViewItemLayout::SingleDenseList(SpotItem::UserPlaylists),
+                });
+            }
+            SwitchViewInput::NavResetSearch => {
+                error!("Search is not implemented yet");
             }
         }
     }

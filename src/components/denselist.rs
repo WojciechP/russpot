@@ -1,6 +1,6 @@
 use gtk::graphene::Point;
 use gtk::prelude::*;
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use rspotify::{model::Offset, prelude::*};

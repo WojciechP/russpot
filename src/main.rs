@@ -1,14 +1,12 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
-use gtk::gio::SimpleActionGroup;
+
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
 use log::debug;
-use relm4::actions::{AccelsPlus, ActionName};
-use relm4::actions::{RelmAction, RelmActionGroup};
+
 use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
-use spotconn::model::SpotItem;
 
 use crate::actionbuilder::ActionBuilder;
 use crate::components::actions::{Actions, ActionsOutput};
@@ -110,6 +108,15 @@ impl relm4::SimpleComponent for AppModel {
         ab.add_emit("right", &["L"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
         ab.add_emit("descend", &["O"], svs, SwitchViewInput::NavDescend); // O for Open
         ab.add_emit("back", &["I"], svs, SwitchViewInput::NavBack); // I because it's on the left side of O
+
+        ab.add_emit("reset-search", &["1"], svs, SwitchViewInput::NavResetSearch);
+        ab.add_emit(
+            "reset-playlists",
+            &["2"],
+            svs,
+            SwitchViewInput::NavResetPlaylists,
+        );
+
         ab.add_emit(
             "play_now",
             &["<shift>P"],
