@@ -1,7 +1,11 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
+//! Package for fetching metadata over rspotify and controlling playback over librespot.
+//! TODO: Split out to separate files.
+pub mod model;
+
 use futures::TryStreamExt;
 use log::debug;
-use std::borrow::BorrowMut;
-use std::cell::RefCell;
 use std::collections::HashSet;
 
 use std::sync::RwLock;
@@ -11,17 +15,15 @@ use librespot::connect::spirc::Spirc;
 use librespot::core::config::ConnectConfig;
 use librespot::core::keymaster::Token;
 use librespot::playback::config::{AudioFormat, PlayerConfig};
-use librespot::playback::mixer::softmixer::SoftMixer;
 use librespot::playback::mixer::{MixerConfig, NoOpVolume};
 use librespot::playback::player::Player;
 use librespot::playback::{audio_backend, mixer};
 use librespot::{
-    core::{config::SessionConfig, session::Session, spotify_id::SpotifyId},
+    core::{config::SessionConfig, session::Session},
     discovery::Credentials,
-    metadata::{Metadata, Track},
 };
 use rspotify::http::HttpError;
-use rspotify::model::{FullTrack, Id, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist};
+use rspotify::model::{FullTrack, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist};
 use rspotify::{clients::BaseClient, clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
 use rspotify::{ClientError, Config};
 use tokio::sync::OnceCell;

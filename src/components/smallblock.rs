@@ -3,53 +3,14 @@
 
 use gtk::{gdk_pixbuf::Pixbuf, glib, prelude::*};
 use relm4::{prelude::*, Component, ComponentParts};
-use rspotify::model::{FullTrack, SimplifiedPlaylist};
 use std::fmt::Debug;
 
-/// BlockContent holds the underlying rspotify data for the given block.
-#[derive(Clone)]
-pub enum BlockInit {
-    FullTrack(FullTrack),
-    SimplifiedPlaylist(SimplifiedPlaylist),
-}
-
-impl BlockInit {
-    pub fn href(&self) -> &str {
-        match self {
-            BlockInit::FullTrack(ft) => ft
-                .href
-                .as_deref()
-                .unwrap_or("<local tracks are unsupported>"),
-            BlockInit::SimplifiedPlaylist(sp) => &sp.href,
-        }
-    }
-
-    fn title(&self) -> &str {
-        match self {
-            BlockInit::FullTrack(ft) => &ft.name,
-            BlockInit::SimplifiedPlaylist(sp) => &sp.name,
-        }
-    }
-
-    fn img_url(&self) -> Option<String> {
-        let images = match self {
-            BlockInit::FullTrack(ft) => &ft.album.images,
-            BlockInit::SimplifiedPlaylist(sp) => &sp.images,
-        };
-        images.first().map(|img| img.url.to_owned())
-    }
-}
-
-impl Debug for BlockInit {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.href())
-    }
-}
+use crate::spotconn::model::SpotItem;
 
 /// SmallBlock holds the state for the displayed component.
 pub struct SmallBlock {
     /// The underlying data. Only set at initialization.
-    init: BlockInit,
+    init: SpotItem,
     /// The image associated with the entry (usually album art).
     /// Loaded asynchronously after initialization.
     pixbuf: Option<Pixbuf>,
@@ -57,13 +18,13 @@ pub struct SmallBlock {
 
 impl Debug for SmallBlock {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<SmallBlock for {} >", self.init.href())
+        write!(f, "<SmallBlock for {:?} >", self.init)
     }
 }
 
 impl SmallBlock {
     /// Returns the underlying Spotify item.
-    pub fn get_content(&self) -> &BlockInit {
+    pub fn get_content(&self) -> &SpotItem {
         &self.init
     }
 }
@@ -84,8 +45,9 @@ pub enum SmallBlockCommandOutput {
 }
 
 #[relm4::component(pub)]
+#[allow(deprecated)]
 impl Component for SmallBlock {
-    type Init = BlockInit;
+    type Init = SpotItem;
     type Input = SmallBlockInput;
     type Output = SmallBlockOutput;
     type CommandOutput = SmallBlockCommandOutput;
@@ -110,12 +72,12 @@ impl Component for SmallBlock {
 
                     gtk::Label {
                         set_css_classes: &["name"],
-                        set_label: &model.init.title(),
+                        set_label: model.init.name(),
                         set_xalign: 0.0,
                     },
                     gtk::Label {
                         set_css_classes: &["user"],
-                        set_label: &model.init.title(),
+                        set_label: model.init.name(),
                         set_xalign: 0.0,
                     },
                 },
@@ -131,8 +93,8 @@ impl Component for SmallBlock {
         let model = SmallBlock { init, pixbuf: None };
         let widgets = view_output!();
 
-        if let Some(img_url) = model.init.img_url() {
-            sender.oneshot_command(async {
+        if let Some(img_url) = model.init.img_url().map(str::to_string) {
+            sender.oneshot_command(async move {
                 let result = reqwest::get(img_url).await.unwrap();
                 let bytes = result.bytes().await.unwrap().to_vec();
                 let bytes = glib::Bytes::from(&bytes.to_vec());

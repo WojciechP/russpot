@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
 use gtk::prelude::*;
 use log::debug;
 use relm4::{factory::FactoryVecDeque, prelude::*};

@@ -1,16 +1,13 @@
-use futures::stream::TryStreamExt;
-
 use gtk::graphene::Point;
 use gtk::prelude::*;
+use log::warn;
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
-use rspotify::model::SimplifiedPlaylist;
 use rspotify::prelude::*;
-use rspotify::{clients::OAuthClient, model::PlaylistId};
 
-use crate::spotconn::SpotConn;
+use crate::spotconn::{model::SpotItem, SpotConn};
 
-use super::smallblock::{BlockInit, SmallBlock, SmallBlockOutput};
+use super::smallblock::{SmallBlock, SmallBlockOutput};
 
 #[derive(Debug)]
 pub struct DenseList {
@@ -29,8 +26,8 @@ impl DenseList {
             .dense_items
             .get(self.cursor.as_ref()?.current_index())?;
         match item.sb.model().get_content() {
-            BlockInit::FullTrack(_) => None,
-            BlockInit::SimplifiedPlaylist(sp) => Some(DenseListInit {
+            SpotItem::Track(_) => None,
+            SpotItem::Playlist(sp) => Some(DenseListInit {
                 spot: self.spot.clone(),
                 source: Source::PlaylistUri(sp.id.uri().to_owned()),
             }),
@@ -63,7 +60,7 @@ pub enum DenseListOutput {}
 
 #[derive(Debug)]
 pub enum DenseListCommandOutput {
-    AddItem(BlockInit),
+    AddItem(SpotItem),
 }
 
 #[relm4::component(pub)]
@@ -124,6 +121,7 @@ impl relm4::Component for DenseList {
         match msg {
             DenseListInput::MoveCursorTo(dyn_idx) => {
                 let mut items = self.dense_items.guard();
+                let mut move_focus_to: Option<gtk::Button> = None;
                 if let Some(item) = self
                     .cursor
                     .clone()
@@ -139,26 +137,35 @@ impl relm4::Component for DenseList {
                     Some(item) => {
                         item.has_cursor = true;
                         self.cursor = Some(dyn_idx);
+                        move_focus_to = Some(item.sb.widget().clone());
                     }
                     None => println!("cannot set cursor, message back up?"),
+                }
+                drop(items); // release guard on items to be able to call ensure_visible
+                if let Some(next) = move_focus_to {
+                    self.ensure_visible(&next);
                 }
             }
             DenseListInput::CursorMove(delta) => {
                 let next_id = match self.cursor.clone() {
                     Some(cursor) => {
+                        let idx = cursor.current_index() as i32;
+                        if idx + delta < 0 {
+                            warn!("not moving the cursor up out of the list");
+                            return;
+                        }
+                        if (idx + delta) as usize >= self.dense_items.len() {
+                            warn!("not moving the cursor down out of the list");
+                            return;
+                        }
                         self.dense_items
                             .guard()
                             .get_mut(cursor.current_index())
                             .unwrap()
                             .has_cursor = false;
-                        let idx = cursor.current_index() as i32;
-                        if idx + delta < 0 {
-                            println!("TODO: escaping the list");
-                            return;
-                        }
                         (idx + delta) as usize
                     }
-                    None if delta > 0 => 1,
+                    None if delta > 0 => 0,
                     None => self.dense_items.len() - 1,
                 };
                 match self.dense_items.get(next_id) {
@@ -217,7 +224,7 @@ impl DenseList {
         }
     }
 
-    pub fn current_item(&self) -> Option<BlockInit> {
+    pub fn current_item(&self) -> Option<SpotItem> {
         let item = self.dense_items.get(self.cursor.clone()?.current_index())?;
         Some(item.sb.model().get_content().clone())
     }
@@ -227,15 +234,13 @@ impl DenseList {
         match source {
             Source::UserPlaylists => sender.command(move |out, shutdown| {
                 spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
-                    out.emit(DenseListCommandOutput::AddItem(
-                        BlockInit::SimplifiedPlaylist(sp),
-                    ))
+                    out.emit(DenseListCommandOutput::AddItem(SpotItem::Playlist(sp)))
                 })
             }),
 
             Source::PlaylistUri(uri) => sender.command(move |out, shutdown| {
                 spot.tracks_in_playlist(shutdown, uri, move |ft| {
-                    out.emit(DenseListCommandOutput::AddItem(BlockInit::FullTrack(ft)))
+                    out.emit(DenseListCommandOutput::AddItem(SpotItem::Track(ft)))
                 })
             }),
         }
@@ -260,7 +265,7 @@ enum DenseItemOutput {
 
 #[relm4::factory]
 impl FactoryComponent for DenseItem {
-    type Init = BlockInit;
+    type Init = SpotItem;
     type Input = DenseItemInput;
     type Output = DenseItemOutput;
     type ParentWidget = gtk::Box;

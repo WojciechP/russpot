@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+#![allow(unused_variables)]
 use std::cell::RefCell;
 
 use gtk::gdk_pixbuf::Pixbuf;
@@ -46,6 +48,7 @@ pub enum PlaylistItemCommandOutput {
 }
 
 #[relm4::factory(pub)]
+#[allow(deprecated)]
 impl FactoryComponent for PlaylistItem {
     type Init = PlaylistItemInit;
     type Input = PlaylistItemInput;

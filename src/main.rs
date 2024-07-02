@@ -1,10 +1,12 @@
-use components::smallblock::BlockInit;
+#![allow(dead_code)]
+#![allow(unused_variables)]
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
 use relm4::actions::{AccelsPlus, ActionName};
 use relm4::actions::{RelmAction, RelmActionGroup};
 use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
+use spotconn::model::SpotItem;
 
 use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::switchview::{SwitchView, SwitchViewInit, SwitchViewInput};
@@ -111,7 +113,6 @@ impl relm4::SimpleComponent for AppModel {
         let a_quit: RelmAction<ActionQuit> = RelmAction::new_stateless(move |_| {
             println!("quit");
             relm4::main_application().quit();
-            denselist_sender.emit(SwitchViewInput::CursorMove(1));
         });
         let _denselist_sender = model.switchview.sender().clone();
 
@@ -120,9 +121,7 @@ impl relm4::SimpleComponent for AppModel {
         let a_down: RelmAction<ActionDown> = RelmAction::new_stateless(move |_| {
             //         app.quit();
             println!("actin down");
-            denselist_sender
-                .send(SwitchViewInput::CursorMove(1))
-                .unwrap();
+            denselist_sender.emit(SwitchViewInput::CursorMove(1));
         });
 
         app.set_accelerators_for_action::<ActionUp>(&["K"]);
@@ -192,15 +191,15 @@ impl relm4::SimpleComponent for AppModel {
 }
 
 impl AppModel {
-    fn play_now(&self, sender: ComponentSender<AppModel>, item: BlockInit) {
+    fn play_now(&self, sender: ComponentSender<AppModel>, item: SpotItem) {
         let spot = self.spot.clone();
         match item {
-            BlockInit::SimplifiedPlaylist(sp) => sender.oneshot_command(async move {
+            SpotItem::Playlist(sp) => sender.oneshot_command(async move {
                 println!("starting playback of playlist {}", sp.name);
                 spot.play_playlist(sp.id).await;
                 ()
             }),
-            BlockInit::FullTrack(tr) => todo!("Cannot play tracks yet"),
+            SpotItem::Track(ft) => todo!("Cannot play tracks yet"),
         }
     }
 }
