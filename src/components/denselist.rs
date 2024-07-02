@@ -256,7 +256,6 @@ impl DenseList {
         match source.clone() {
             SpotItem::UserPlaylists => sender.command(move |out, shutdown| {
                 spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
-                    debug!("Received playlist {}", sp.name);
                     out.emit(DenseListCommandOutput::AddItem(SpotItem::Playlist(sp)))
                 })
             }),

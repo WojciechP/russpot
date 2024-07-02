@@ -8,7 +8,7 @@ use log::debug;
 use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 
-use crate::actionbuilder::ActionBuilder;
+use crate::actionbuilder::{AccelManager, ActionBuilder};
 use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::switchview::{SwitchView, SwitchViewInit, SwitchViewInput};
 use crate::spotconn::SpotConn;
@@ -100,32 +100,35 @@ impl relm4::SimpleComponent for AppModel {
 
         let widgets = view_output!();
 
-        let ab = ActionBuilder::new(window, "built-sag");
-        let svs = &model.switchview.sender().clone();
-        ab.add_emit("down", &["J"], svs, SwitchViewInput::CursorMove(1));
-        ab.add_emit("up", &["K"], svs, SwitchViewInput::CursorMove(-1));
-        ab.add_emit("left", &["H"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
-        ab.add_emit("right", &["L"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
-        ab.add_emit("descend", &["O"], svs, SwitchViewInput::NavDescend); // O for Open
-        ab.add_emit("back", &["I"], svs, SwitchViewInput::NavBack); // I because it's on the left side of O
+        let ab = ActionBuilder::new(window.clone(), "global-controls");
+        ab.add("quit", &["<primary>Q"], || {
+            relm4::main_application().quit();
+        });
 
-        ab.add_emit("reset-search", &["1"], svs, SwitchViewInput::NavResetSearch);
-        ab.add_emit(
+        let mut am = AccelManager::new(&window, "global-navigation");
+        let svs = &model.switchview.sender().clone();
+        am.register_emit("down", &["J"], svs, SwitchViewInput::CursorMove(1));
+        am.register_emit("up", &["K"], svs, SwitchViewInput::CursorMove(-1));
+        am.register_emit("left", &["H"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
+        am.register_emit("right", &["L"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
+        am.register_emit("descend", &["O"], svs, SwitchViewInput::NavDescend); // O for Open
+        am.register_emit("back", &["I"], svs, SwitchViewInput::NavBack); // I because it's on the left side of O
+
+        am.register_emit("reset-search", &["1"], svs, SwitchViewInput::NavResetSearch);
+        am.register_emit(
             "reset-playlists",
             &["2"],
             svs,
             SwitchViewInput::NavResetPlaylists,
         );
 
-        ab.add_emit(
+        am.register_emit(
             "play_now",
             &["<shift>P"],
             sender.input_sender(),
             AppInput::PlayNow,
         );
-        ab.add("quit", &["<primary>Q"], || {
-            relm4::main_application().quit();
-        });
+        am.connect();
 
         ComponentParts { model, widgets }
     }
@@ -137,8 +140,7 @@ impl relm4::SimpleComponent for AppModel {
                     .switchview
                     .model()
                     .current_list()
-                    .model()
-                    .play_context()
+                    .and_then(|dl| dl.model().play_context())
                 {
                     debug!("play now -> ctx is some");
                     let spot = self.spot.clone();

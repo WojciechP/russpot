@@ -2,10 +2,13 @@
 #![allow(unused_variables)]
 
 use gtk::prelude::*;
-use log::{debug, error};
+use log::{debug, warn};
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
-use super::denselist::{DenseList, DenseListInit, DenseListInput};
+use super::{
+    denselist::{DenseList, DenseListInit, DenseListInput},
+    searchpage::SearchPage,
+};
 use crate::spotconn::{model::SpotItem, SpotConn};
 
 pub struct SwitchView {
@@ -90,13 +93,13 @@ impl relm4::Component for SwitchView {
                     .back()
                     .expect("page stack cannot be empty")
                     .denselist
-                    .emit(DenseListInput::CursorMove(delta));
+                    .cursor_move(delta);
             }
             SwitchViewInput::NavDescend => {
                 let mut pages = self.views.guard();
                 let maybe_dli = {
                     let last_page = pages.back().expect("page stack cannot be empty");
-                    last_page.denselist.model().descend()
+                    last_page.denselist.descend()
                 };
                 if let Some(dli) = maybe_dli {
                     debug!("descending into {:?}", dli);
@@ -126,7 +129,13 @@ impl relm4::Component for SwitchView {
                 });
             }
             SwitchViewInput::NavResetSearch => {
-                error!("Search is not implemented yet");
+                let mut pages = self.views.guard();
+                pages.clear();
+                debug!("NavResetSearch");
+                pages.push_back(SwitchViewItemInit {
+                    spot: self.spot.clone(),
+                    layout: SwitchViewItemLayout::SearchPage,
+                });
             }
         }
     }
@@ -137,20 +146,48 @@ impl SwitchView {
         self.gtk_stack.last_child().unwrap()
     }
 
-    pub fn current_list(&self) -> &Controller<DenseList> {
-        &self.views.back().unwrap().denselist
+    pub fn current_list(&self) -> Option<&Controller<DenseList>> {
+        self.views.back().and_then(|item| match &item.denselist {
+            SwitchViewItemChild::DenseList(ctrl) => Some(ctrl),
+            _ => None,
+        })
+    }
+}
+
+#[derive(Debug)]
+pub enum SwitchViewItemChild {
+    DenseList(Controller<DenseList>),
+    SearchPage(Controller<SearchPage>),
+}
+
+impl SwitchViewItemChild {
+    fn descend(&self) -> Option<DenseListInit> {
+        match self {
+            SwitchViewItemChild::DenseList(dl) => dl.model().descend(),
+            SwitchViewItemChild::SearchPage(sp) => None, // TODO: implement descend for search
+        }
+    }
+
+    fn cursor_move(&self, delta: i32) {
+        match self {
+            SwitchViewItemChild::DenseList(dl) => dl.emit(DenseListInput::CursorMove(delta)),
+            SwitchViewItemChild::SearchPage(sp) => {
+                warn!("cursor moves for search not implemented yet")
+            }
+        }
     }
 }
 
 #[derive(Debug)]
 pub struct SwitchViewItem {
     init: SwitchViewItemInit,
-    denselist: Controller<DenseList>, // TODO: this should be an enum for search/home pages too
+    denselist: SwitchViewItemChild,
 }
 
 #[derive(Debug)]
 pub enum SwitchViewItemLayout {
     SingleDenseList(SpotItem),
+    SearchPage,
 }
 
 #[derive(Debug)]
@@ -181,24 +218,45 @@ impl FactoryComponent for SwitchViewItem {
             gtk::Label {
                 set_label: "Switch view item"
             },
-            gtk::Button {
-                gtk::Label {
-                    set_label: "Switch view content"
-                },
-            },
-            self.denselist.widget() {
+            self.child_widget() {
             },
         }
     }
 
     fn init_model(init: Self::Init, index: &Self::Index, sender: FactorySender<Self>) -> Self {
-        let SwitchViewItemLayout::SingleDenseList(ref source) = init.layout;
-        let denselist = DenseList::builder()
-            .launch(DenseListInit {
-                spot: init.spot.clone(),
-                source: source.clone(),
-            })
-            .forward(sender.output_sender(), |msg| match msg {});
-        SwitchViewItem { init, denselist }
+        match init.layout {
+            SwitchViewItemLayout::SingleDenseList(ref source) => {
+                let denselist = DenseList::builder()
+                    .launch(DenseListInit {
+                        spot: init.spot.clone(),
+                        source: source.clone(),
+                    })
+                    .forward(sender.output_sender(), |msg| match msg {});
+                SwitchViewItem {
+                    init,
+                    denselist: SwitchViewItemChild::DenseList(denselist),
+                }
+            }
+            SwitchViewItemLayout::SearchPage => {
+                let sp = SearchPage::builder()
+                    .launch(())
+                    .forward(sender.output_sender(), |msg| match msg {
+                        () => todo!(),
+                    });
+                SwitchViewItem {
+                    init,
+                    denselist: SwitchViewItemChild::SearchPage(sp),
+                }
+            }
+        }
+    }
+}
+
+impl SwitchViewItem {
+    fn child_widget(&self) -> gtk::Widget {
+        match &self.denselist {
+            SwitchViewItemChild::DenseList(dl) => dl.widget().clone().into(),
+            SwitchViewItemChild::SearchPage(sp) => sp.widget().clone().into(),
+        }
     }
 }
