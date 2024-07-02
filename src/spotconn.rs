@@ -9,6 +9,7 @@ use log::debug;
 use std::collections::HashSet;
 
 use std::sync::RwLock;
+use std::time::SystemTime;
 use std::{env, sync::Arc};
 
 use librespot::connect::spirc::Spirc;
@@ -22,12 +23,11 @@ use librespot::{
     core::{config::SessionConfig, session::Session},
     discovery::Credentials,
 };
-use rspotify::http::HttpError;
 use rspotify::model::{
     FullTrack, Offset, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist,
 };
+use rspotify::Config;
 use rspotify::{clients::BaseClient, clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
-use rspotify::{ClientError, Config};
 use tokio::sync::OnceCell;
 
 struct LibreSpotConn {
@@ -42,10 +42,16 @@ impl LibreSpotConn {
         let pwd = env::var("RUSSPOT_PASSWORD").expect("RUSSPOT_PASSWORD env var must be set");
         let credentials = Credentials::with_password(user, pwd);
         let session_config = SessionConfig::default();
+        debug!("Connecting via LibreSpot using credentials from env vars...");
+        let t0 = SystemTime::now();
         let (session, _session_credentials) =
             Session::connect(session_config, credentials, None, false)
                 .await
                 .expect("LibreSpot Session failed");
+        debug!(
+            "LibreSpot connection established in {}ms. Creating player...",
+            SystemTime::now().duration_since(t0).unwrap().as_millis(),
+        );
 
         let player_config = PlayerConfig::default();
         let audio_format = AudioFormat::default();
@@ -60,10 +66,13 @@ impl LibreSpotConn {
         );
         let mixer_factory = mixer::find(None).expect("mixer factory not found");
         let mixer = mixer_factory(MixerConfig::default());
-        eprintln!("Starting Spirc connection...\n\n");
+        debug!("Starting Spirc connection...");
         let (spirc, spirc_task) = Spirc::new(connect_config, session.clone(), player, mixer);
         tokio::spawn(spirc_task); // let spirc run in the background
-        eprintln!("LibreSpot (Spirc) connected!\n\n");
+        debug!(
+            "Spirc connection established, total {}ms.",
+            SystemTime::now().duration_since(t0).unwrap().as_millis()
+        );
         LibreSpotConn {
             session,
             player: RwLock::new(None),
@@ -204,31 +213,6 @@ impl SpotConn {
             )
             .await
             .expect("failed to start context playback")
-    }
-
-    pub async fn play_playlist<'a>(&self, id: PlaylistId<'a>) {
-        let result = self
-            .rspot()
-            .await
-            .start_context_playback(
-                PlayContextId::Playlist(id.clone()),
-                None, /* device id*/
-                None, /* offset */
-                None, /* Position */
-            )
-            .await;
-        match result {
-            Ok(_) => println!("playback ok {} started.", id),
-            Err(ClientError::Http(http)) => {
-                if let HttpError::StatusCode(sc) = *http {
-                    let text = sc.text().await;
-                    println!("could not start: \n{}", text.unwrap());
-                } else {
-                    println!("boo: {:?}", http);
-                }
-            }
-            other => println!("unknown playback error: {:?}", other),
-        }
     }
 
     pub async fn play_on_spirc(&self) {

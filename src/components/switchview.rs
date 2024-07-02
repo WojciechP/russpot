@@ -119,6 +119,7 @@ impl relm4::Component for SwitchView {
             SwitchViewInput::NavResetPlaylists => {
                 let mut pages = self.views.guard();
                 pages.clear();
+                debug!("NavResetPlaylists");
                 pages.push_back(SwitchViewItemInit {
                     spot: self.spot.clone(),
                     layout: SwitchViewItemLayout::SingleDenseList(SpotItem::UserPlaylists),

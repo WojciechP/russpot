@@ -252,9 +252,11 @@ impl DenseList {
 
     fn init_data_loading(spot: &SpotConn, source: &SpotItem, sender: &ComponentSender<DenseList>) {
         let spot = spot.clone();
+        debug!("Initializing data load for source {:?}", source);
         match source.clone() {
             SpotItem::UserPlaylists => sender.command(move |out, shutdown| {
                 spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
+                    debug!("Received playlist {}", sp.name);
                     out.emit(DenseListCommandOutput::AddItem(SpotItem::Playlist(sp)))
                 })
             }),
