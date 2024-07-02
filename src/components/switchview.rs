@@ -16,7 +16,7 @@ pub struct SwitchView {
 #[derive(Debug)]
 pub struct SwitchViewInit {}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum SwitchViewInput {
     /// Move cursor down (+1) or up (-1).
     CursorMove(i32),

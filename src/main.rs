@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+use gtk::gio::SimpleActionGroup;
 use gtk::prelude::*;
 use librespot::core::spotify_id::SpotifyId;
 use log::debug;
@@ -9,10 +10,12 @@ use relm4::{self, Component, ComponentController, Controller};
 use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 use spotconn::model::SpotItem;
 
+use crate::actionbuilder::ActionBuilder;
 use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::switchview::{SwitchView, SwitchViewInit, SwitchViewInput};
 use crate::spotconn::SpotConn;
 
+mod actionbuilder;
 mod components;
 mod spotconn;
 
@@ -24,7 +27,7 @@ struct AppModel {
     switchview: Controller<SwitchView>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum AppInput {
     PlayNow,
     SpircNow,
@@ -58,10 +61,6 @@ impl relm4::SimpleComponent for AppModel {
                 actions_widget -> gtk::Box {
                     set_width_request: 200,
                 },
-                #[name="btn"]
-                gtk::MenuButton {
-                    set_menu_model: Some(&menu_model),
-                },
             },
         }
     }
@@ -79,10 +78,6 @@ impl relm4::SimpleComponent for AppModel {
         let switchview: Controller<SwitchView> = SwitchView::builder()
             .launch(SwitchViewInit {})
             .forward(sender.input_sender(), |msg| match msg {});
-
-        let menu_model = gtk::gio::Menu::new();
-        menu_model.append(Some("Down"), Some(&ActionDown::action_name()));
-        menu_model.append(Some("Up"), Some(&ActionUp::action_name()));
 
         let actions_model = Actions::builder()
             .launch(())
@@ -107,61 +102,18 @@ impl relm4::SimpleComponent for AppModel {
 
         let widgets = view_output!();
 
-        let app = relm4::main_application();
-
-        app.set_accelerators_for_action::<ActionQuit>(&["<primary>Q"]);
-        let denselist_sender = model.switchview.sender().clone();
-        let a_quit: RelmAction<ActionQuit> = RelmAction::new_stateless(move |_| {
-            println!("quit");
+        let ab = ActionBuilder::new(window, "built-sag");
+        let svs = &model.switchview.sender().clone();
+        ab.add_emit("down", &["J"], svs, SwitchViewInput::CursorMove(1));
+        ab.add_emit("up", &["K"], svs, SwitchViewInput::CursorMove(-1));
+        ab.add_emit("left", &["H"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
+        ab.add_emit("right", &["L"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
+        ab.add_emit("descend", &["O"], svs, SwitchViewInput::NavDescend); // O for Open
+        ab.add_emit("back", &["I"], svs, SwitchViewInput::NavBack); // I because it's on the left side of O
+        ab.add_emit("play_now", &["P"], sender.input_sender(), AppInput::PlayNow);
+        ab.add("quit", &["<primary>Q"], || {
             relm4::main_application().quit();
         });
-        let _denselist_sender = model.switchview.sender().clone();
-
-        app.set_accelerators_for_action::<ActionDown>(&["J"]);
-        let denselist_sender = model.switchview.sender().clone();
-        let a_down: RelmAction<ActionDown> = RelmAction::new_stateless(move |_| {
-            //         app.quit();
-            println!("actin down");
-            denselist_sender.emit(SwitchViewInput::CursorMove(1));
-        });
-
-        app.set_accelerators_for_action::<ActionUp>(&["K"]);
-        let denselist_sender = model.switchview.sender().clone();
-        let a_up: RelmAction<ActionUp> = RelmAction::new_stateless(move |_| {
-            println!("actin up");
-            denselist_sender
-                .send(SwitchViewInput::CursorMove(-1))
-                .unwrap();
-        });
-
-        app.set_accelerators_for_action::<ActionDescend>(&["O"]); // O for Open
-        let denselist_sender = model.switchview.sender().clone();
-        let a_descend: RelmAction<ActionDescend> = RelmAction::new_stateless(move |_| {
-            println!("actin descend");
-            denselist_sender.send(SwitchViewInput::NavDescend).unwrap();
-        });
-        app.set_accelerators_for_action::<ActionBack>(&["I"]); // I because it's on the left side of O
-        let denselist_sender = model.switchview.sender().clone();
-        let a_back: RelmAction<ActionBack> = RelmAction::new_stateless(move |_| {
-            println!("actin back");
-            denselist_sender.send(SwitchViewInput::NavBack).unwrap();
-        });
-
-        app.set_accelerators_for_action::<ActionPlayNow>(&["<shift>P"]);
-        let denselist_sender = model.switchview.sender().clone();
-        let a_play: RelmAction<ActionPlayNow> = RelmAction::new_stateless(move |_| {
-            println!("actin play - not implemented");
-        });
-
-        let mut action_group = RelmActionGroup::<BozoActionGroup>::new();
-        action_group.add_action(a_down);
-        action_group.add_action(a_up);
-        action_group.add_action(a_quit);
-        action_group.add_action(a_descend);
-        action_group.add_action(a_back);
-        action_group.add_action(a_play);
-        action_group.register_for_widget(widgets.main_window.clone());
-        println!("ag: {:?}\n", relm4::main_application().list_actions());
 
         ComponentParts { model, widgets }
     }
@@ -185,16 +137,6 @@ impl relm4::SimpleComponent for AppModel {
                     debug!("playnow -> no ctx");
                 }
             }
-            /*
-            AppInput::PlayNow => match self.denselist.model().current_item() {
-                Some(item) => {
-                    self.play_now(_sender, item);
-                }
-                None => {
-                    println!("cannot play, cursor is empty")
-                }
-            },
-            */
             AppInput::SpircNow => {
                 let spot = self.spot.clone();
                 _sender.oneshot_command(async move {
@@ -218,14 +160,6 @@ impl AppModel {
         }
     }
 }
-
-relm4::new_action_group!(BozoActionGroup, "bozo");
-relm4::new_stateless_action!(ActionQuit, BozoActionGroup, "quitquitquit");
-relm4::new_stateless_action!(ActionDown, BozoActionGroup, "down");
-relm4::new_stateless_action!(ActionUp, BozoActionGroup, "up");
-relm4::new_stateless_action!(ActionDescend, BozoActionGroup, "descend");
-relm4::new_stateless_action!(ActionBack, BozoActionGroup, "back");
-relm4::new_stateless_action!(ActionPlayNow, BozoActionGroup, "play_now");
 
 fn main() {
     env_logger::init();
