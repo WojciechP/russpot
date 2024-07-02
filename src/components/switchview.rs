@@ -4,9 +4,8 @@ use gtk::prelude::*;
 use log::debug;
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
-use crate::spotconn::SpotConn;
-
-use super::denselist::{DenseList, DenseListInit, DenseListInput, Source};
+use super::denselist::{DenseList, DenseListInit, DenseListInput};
+use crate::spotconn::{model::SpotItem, SpotConn};
 
 pub struct SwitchView {
     views: FactoryVecDeque<SwitchViewItem>,
@@ -66,7 +65,7 @@ impl relm4::Component for SwitchView {
         // TODO: remove hardcoded two views
         views.guard().push_back(SwitchViewItemInit {
             spot: SpotConn::new(), //TODO: accept from parent
-            layout: SwitchViewItemLayout::SingleDenseList(Source::UserPlaylists),
+            layout: SwitchViewItemLayout::SingleDenseList(SpotItem::UserPlaylists),
         });
         let mut model = SwitchView {
             views,
@@ -134,7 +133,7 @@ pub struct SwitchViewItem {
 
 #[derive(Debug)]
 pub enum SwitchViewItemLayout {
-    SingleDenseList(Source),
+    SingleDenseList(SpotItem),
 }
 
 #[derive(Debug)]

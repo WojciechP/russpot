@@ -110,7 +110,12 @@ impl relm4::SimpleComponent for AppModel {
         ab.add_emit("right", &["L"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
         ab.add_emit("descend", &["O"], svs, SwitchViewInput::NavDescend); // O for Open
         ab.add_emit("back", &["I"], svs, SwitchViewInput::NavBack); // I because it's on the left side of O
-        ab.add_emit("play_now", &["P"], sender.input_sender(), AppInput::PlayNow);
+        ab.add_emit(
+            "play_now",
+            &["<shift>P"],
+            sender.input_sender(),
+            AppInput::PlayNow,
+        );
         ab.add("quit", &["<primary>Q"], || {
             relm4::main_application().quit();
         });
@@ -143,20 +148,6 @@ impl relm4::SimpleComponent for AppModel {
                     spot.play_on_spirc().await;
                 })
             }
-        }
-    }
-}
-
-impl AppModel {
-    fn play_now(&self, sender: ComponentSender<AppModel>, item: SpotItem) {
-        let spot = self.spot.clone();
-        match item {
-            SpotItem::Playlist(sp) => sender.oneshot_command(async move {
-                println!("starting playback of playlist {}", sp.name);
-                spot.play_playlist(sp.id).await;
-                ()
-            }),
-            SpotItem::Track(ft) => todo!("Cannot play tracks yet"),
         }
     }
 }

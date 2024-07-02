@@ -1,6 +1,6 @@
 use gtk::graphene::Point;
 use gtk::prelude::*;
-use log::warn;
+use log::{debug, info, warn};
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use rspotify::{model::Offset, prelude::*};
@@ -9,56 +9,75 @@ use crate::spotconn::{model::SpotItem, SpotConn};
 
 use super::smallblock::{SmallBlock, SmallBlockOutput};
 
+#[derive(Debug, Clone)]
+pub struct DenseListInit {
+    pub spot: SpotConn,
+    pub source: SpotItem,
+}
+
 #[derive(Debug)]
 pub struct DenseList {
-    spot: SpotConn,
+    init: DenseListInit,
     dense_items: FactoryVecDeque<DenseItem>,
     cursor: Option<DynamicIndex>,
     scrollwin: gtk::ScrolledWindow,
 }
 
 impl DenseList {
+    fn item_under_cursor(&self) -> Option<SpotItem> {
+        let item = self
+            .dense_items
+            .get(self.cursor.as_ref()?.current_index())?;
+        Some(item.sb.model().get_content().clone())
+    }
+
     /// Obtains an init struct for descending into currently selected item.
     /// Returns None if no item is selected, or the selected item
     /// cannot be descended into (it's a track).
     pub fn descend(&self) -> Option<DenseListInit> {
-        let item = self
-            .dense_items
-            .get(self.cursor.as_ref()?.current_index())?;
-        match item.sb.model().get_content() {
+        match self.item_under_cursor()? {
+            // Tracks cannot be descended into, anything else can:
             SpotItem::Track(_) => None,
-            SpotItem::Playlist(sp) => Some(DenseListInit {
-                spot: self.spot.clone(),
-                source: Source::PlaylistUri(sp.id.uri().to_owned()),
+            item => Some(DenseListInit {
+                spot: self.init.spot.clone(),
+                source: item.clone(),
             }),
         }
     }
 
     // Reutrns an rspotify PlayContext for the collection, including the cursor position.
-    // TODO: currently this actually starts the child immediately, not the collection.
     pub fn play_context(&self) -> Option<(PlayContextId<'static>, Option<Offset>)> {
-        let item = self
-            .dense_items
-            .get(self.cursor.as_ref()?.current_index())?;
-        Some((
-            item.sb.model().get_content().context_id()?.into_static(),
-            None,
-        ))
+        let item = self.item_under_cursor();
+        match (self.init.source.context_id(), item) {
+            (None, None) => {
+                debug!(
+                    "play_context: None, because no item is selected and list is {:?}",
+                    self.init.source
+                );
+                None
+            }
+            (None, Some(item)) => match item.context_id() {
+                Some(ctx) => {
+                    debug!(
+                        "play_context: for item, because list is {:?}",
+                        self.init.source
+                    );
+                    Some((ctx.clone_static(), None))
+                }
+                None => {
+                    debug!("play_context: None, because item is {:?}", item);
+                    None
+                }
+            },
+            (Some(ctx), item) => {
+                debug!("Play context for list {:?}", self.init.source);
+                Some((
+                    ctx.clone_static(),
+                    item.and_then(|it| it.uri()).map(Offset::Uri),
+                ))
+            }
+        }
     }
-}
-
-/// The source of all Spotify items in the list.
-/// Spotify docs sometimes refer to this as "context".
-#[derive(Debug, Clone)]
-pub enum Source {
-    UserPlaylists,
-    PlaylistUri(String),
-}
-
-#[derive(Debug, Clone)]
-pub struct DenseListInit {
-    pub spot: SpotConn,
-    pub source: Source,
 }
 
 #[derive(Debug)]
@@ -114,7 +133,7 @@ impl relm4::Component for DenseList {
             });
 
         let mut model = DenseList {
-            spot: init.spot,
+            init,
             dense_items,
             cursor: None,
             scrollwin: gtk::ScrolledWindow::new(),
@@ -124,7 +143,7 @@ impl relm4::Component for DenseList {
         let widgets = view_output!();
         model.scrollwin = widgets.scrollboxes.clone();
 
-        DenseList::init_data_loading(&model.spot, init.source, &sender);
+        DenseList::init_data_loading(&model.init.spot, &model.init.source, &sender);
 
         relm4::ComponentParts { model, widgets }
     }
@@ -199,7 +218,7 @@ impl relm4::Component for DenseList {
     ) {
         match message {
             DenseListCommandOutput::AddItem(item) => {
-                let spot = self.spot.clone();
+                let spot = self.init.spot.clone();
                 self.dense_items.guard().push_back(item);
             }
         }
@@ -241,20 +260,23 @@ impl DenseList {
         Some(item.sb.model().get_content().clone())
     }
 
-    fn init_data_loading(spot: &SpotConn, source: Source, sender: &ComponentSender<DenseList>) {
+    fn init_data_loading(spot: &SpotConn, source: &SpotItem, sender: &ComponentSender<DenseList>) {
         let spot = spot.clone();
-        match source {
-            Source::UserPlaylists => sender.command(move |out, shutdown| {
+        match source.clone() {
+            SpotItem::UserPlaylists => sender.command(move |out, shutdown| {
                 spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
                     out.emit(DenseListCommandOutput::AddItem(SpotItem::Playlist(sp)))
                 })
             }),
 
-            Source::PlaylistUri(uri) => sender.command(move |out, shutdown| {
-                spot.tracks_in_playlist(shutdown, uri, move |ft| {
+            SpotItem::Playlist(sp) => sender.command(move |out, shutdown| {
+                spot.tracks_in_playlist(shutdown, sp.id.uri(), move |ft| {
                     out.emit(DenseListCommandOutput::AddItem(SpotItem::Track(ft)))
                 })
             }),
+            SpotItem::Track(_) => {
+                panic!("a single track should never be rendered as a list");
+            }
         }
     }
 }

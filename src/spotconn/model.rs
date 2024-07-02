@@ -1,10 +1,13 @@
 use rspotify::model::{FullTrack, PlayContextId, SimplifiedPlaylist};
+use rspotify::prelude::*;
 
-/// A single item to be displayed in a list.
+/// Either a single Spotify item (track) or a conceptual
+/// collection of items (playlist, album).
 #[derive(Clone)]
 pub enum SpotItem {
     Track(FullTrack),
     Playlist(SimplifiedPlaylist),
+    UserPlaylists,
 }
 
 impl SpotItem {
@@ -13,21 +16,34 @@ impl SpotItem {
         match self {
             SpotItem::Track(ft) => &ft.name,
             SpotItem::Playlist(sp) => &sp.name,
+            SpotItem::UserPlaylists => "Saved playlists",
         }
     }
 
-    /// Returns an URL for the image.
+    /// Returns a Spotify URI, like "spotify:album:XXX".
+    pub fn uri(&self) -> Option<String> {
+        match self {
+            SpotItem::Track(ft) => ft.id.as_ref().map(|id| id.uri()),
+            SpotItem::Playlist(sp) => Some(sp.id.uri()),
+            SpotItem::UserPlaylists => None,
+        }
+    }
+
+    /// Returns an URL for the item or collection.
     pub fn href(&self) -> Option<&str> {
         match self {
             SpotItem::Track(ft) => ft.href.as_deref(),
             SpotItem::Playlist(sp) => Some(&sp.href),
+            SpotItem::UserPlaylists => None,
         }
     }
 
+    /// Returns an URL to load the image from.
     pub fn img_url(&self) -> Option<&str> {
         match self {
             SpotItem::Track(ft) => &ft.album.images,
             SpotItem::Playlist(sp) => &sp.images,
+            SpotItem::UserPlaylists => return None,
         }
         .first()
         .as_ref()
@@ -40,6 +56,7 @@ impl SpotItem {
         match self {
             SpotItem::Track(_) => None,
             SpotItem::Playlist(sp) => Some(PlayContextId::Playlist(sp.id.clone())),
+            SpotItem::UserPlaylists => None,
         }
     }
 }
@@ -47,21 +64,5 @@ impl SpotItem {
 impl std::fmt::Debug for SpotItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.href().unwrap_or("unlinkable item"))
-    }
-}
-
-/// A logical grouping of Spotify items.
-pub enum SpotCollection {
-    UserPlaylists,
-    Playlist(SimplifiedPlaylist),
-}
-
-impl SpotCollection {
-    /// The primary display name for the collection.
-    pub fn name(&self) -> &str {
-        match self {
-            SpotCollection::UserPlaylists => "Saved playlists",
-            SpotCollection::Playlist(sp) => &sp.name,
-        }
     }
 }
