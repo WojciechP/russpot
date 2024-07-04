@@ -2,26 +2,24 @@
 #![allow(unused_variables)]
 
 use gtk::prelude::*;
-use log::{debug};
+use log::debug;
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
-use super::{
-    denselist::{DenseList, DenseListInit, DenseListInput, DenseListOutput},
-    searchpage::{SearchPage, SearchPageInput},
-};
+use super::denselist;
+use super::searchpage;
 use crate::spotconn::{model::SpotItem, SpotConn};
 
-pub struct SwitchView {
+pub struct Model {
     spot: SpotConn,
-    views: FactoryVecDeque<SwitchViewItem>,
+    views: FactoryVecDeque<Child>,
     gtk_stack: gtk::Stack,
 }
 
 #[derive(Debug)]
-pub struct SwitchViewInit {}
+pub struct Init {}
 
 #[derive(Debug, Clone, Copy)]
-pub enum SwitchViewInput {
+pub enum In {
     /// Move cursor down (+1) or up (-1).
     CursorMove(i32),
     /// Descend into selected playlist or album.
@@ -35,17 +33,17 @@ pub enum SwitchViewInput {
 }
 
 #[derive(Debug)]
-pub enum SwitchViewOutput {}
+pub enum Out {}
 
 #[derive(Debug)]
-pub enum SwitchViewCommandOutput {}
+pub enum CmdOut {}
 
 #[relm4::component(pub)]
-impl relm4::Component for SwitchView {
-    type Init = SwitchViewInit;
-    type Input = SwitchViewInput;
-    type Output = SwitchViewOutput;
-    type CommandOutput = SwitchViewCommandOutput;
+impl relm4::Component for Model {
+    type Init = Init;
+    type Input = In;
+    type Output = Out;
+    type CommandOutput = CmdOut;
 
     view! {
         #[root]
@@ -68,10 +66,10 @@ impl relm4::Component for SwitchView {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let views = FactoryVecDeque::<SwitchViewItem>::builder()
+        let views = FactoryVecDeque::<Child>::builder()
             .launch(gtk::Stack::new())
             .forward(sender.output_sender(), move |out| match out {});
-        let mut model = SwitchView {
+        let mut model = Model {
             spot: SpotConn::new(), //TODO: accept from parent
             views,
             gtk_stack: gtk::Stack::default(),
@@ -79,15 +77,13 @@ impl relm4::Component for SwitchView {
         let view_widgets = model.views.widget();
         let widgets = view_output!();
         model.gtk_stack = view_widgets.clone();
-        sender
-            .input_sender()
-            .emit(SwitchViewInput::NavResetPlaylists);
+        sender.input_sender().emit(In::NavResetPlaylists);
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match message {
-            SwitchViewInput::CursorMove(delta) => {
+            In::CursorMove(delta) => {
                 self.views
                     .guard()
                     .back()
@@ -95,7 +91,7 @@ impl relm4::Component for SwitchView {
                     .denselist
                     .cursor_move(delta);
             }
-            SwitchViewInput::NavDescend => {
+            In::NavDescend => {
                 let mut pages = self.views.guard();
                 let maybe_dli = {
                     let last_page = pages.back().expect("page stack cannot be empty");
@@ -103,15 +99,15 @@ impl relm4::Component for SwitchView {
                 };
                 if let Some(dli) = maybe_dli {
                     debug!("descending into {:?}", dli);
-                    pages.push_back(SwitchViewItemInit {
+                    pages.push_back(ChildInit {
                         spot: dli.spot.clone(),
-                        layout: SwitchViewItemLayout::SingleDenseList(dli.source),
+                        layout: ChildLayout::SingleDenseList(dli.source),
                     });
                 } else {
                     debug!("cannot descend");
                 }
             }
-            SwitchViewInput::NavBack => {
+            In::NavBack => {
                 let mut pages = self.views.guard();
                 if pages.len() == 1 {
                     debug!("cannot go back up: already at the root");
@@ -119,63 +115,63 @@ impl relm4::Component for SwitchView {
                     pages.pop_back();
                 }
             }
-            SwitchViewInput::NavResetPlaylists => {
+            In::NavResetPlaylists => {
                 let mut pages = self.views.guard();
                 pages.clear();
                 debug!("NavResetPlaylists");
-                pages.push_back(SwitchViewItemInit {
+                pages.push_back(ChildInit {
                     spot: self.spot.clone(),
-                    layout: SwitchViewItemLayout::SingleDenseList(SpotItem::UserPlaylists),
+                    layout: ChildLayout::SingleDenseList(SpotItem::UserPlaylists),
                 });
             }
-            SwitchViewInput::NavResetSearch => {
+            In::NavResetSearch => {
                 let mut pages = self.views.guard();
                 pages.clear();
                 debug!("NavResetSearch");
-                pages.push_back(SwitchViewItemInit {
+                pages.push_back(ChildInit {
                     spot: self.spot.clone(),
-                    layout: SwitchViewItemLayout::SearchPage,
+                    layout: ChildLayout::SearchPage,
                 });
             }
         }
     }
 }
 
-impl SwitchView {
+impl Model {
     fn last_page_widget(&self) -> gtk::Widget {
         self.gtk_stack.last_child().unwrap()
     }
 
-    pub fn current_list(&self) -> Option<&Controller<DenseList>> {
+    pub fn current_list(&self) -> Option<&Controller<denselist::Model>> {
         self.views.back().and_then(|item| match &item.denselist {
-            SwitchViewItemChild::DenseList(ctrl) => Some(ctrl),
+            ChildContent::DenseList(ctrl) => Some(ctrl),
             _ => None,
         })
     }
 }
 
 #[derive(Debug)]
-pub enum SwitchViewItemChild {
-    DenseList(Controller<DenseList>),
-    SearchPage(Controller<SearchPage>),
+pub enum ChildContent {
+    DenseList(Controller<denselist::Model>),
+    SearchPage(Controller<searchpage::Model>),
 }
 
-impl SwitchViewItemChild {
-    fn descend(&self) -> Option<DenseListInit> {
+impl ChildContent {
+    fn descend(&self) -> Option<denselist::Init> {
         match self {
-            SwitchViewItemChild::DenseList(dl) => dl.model().descend(),
-            SwitchViewItemChild::SearchPage(sp) => None, // TODO: implement descend for search
+            ChildContent::DenseList(dl) => dl.model().descend(),
+            ChildContent::SearchPage(sp) => None, // TODO: implement descend for search
         }
     }
 
     fn cursor_move(&self, delta: i32) {
         match self {
-            SwitchViewItemChild::DenseList(dl) => dl.emit(DenseListInput::CursorMove(delta)),
-            SwitchViewItemChild::SearchPage(sp) => {
+            ChildContent::DenseList(dl) => dl.emit(denselist::In::CursorMove(delta)),
+            ChildContent::SearchPage(sp) => {
                 if delta > 0 {
-                    sp.emit(SearchPageInput::CursorMoveDown)
+                    sp.emit(searchpage::In::CursorMoveDown)
                 } else {
-                    sp.emit(SearchPageInput::CursorMoveUp)
+                    sp.emit(searchpage::In::CursorMoveUp)
                 }
             }
         }
@@ -183,37 +179,37 @@ impl SwitchViewItemChild {
 }
 
 #[derive(Debug)]
-pub struct SwitchViewItem {
-    init: SwitchViewItemInit,
-    denselist: SwitchViewItemChild,
+pub struct Child {
+    init: ChildInit,
+    denselist: ChildContent,
 }
 
 #[derive(Debug)]
-pub enum SwitchViewItemLayout {
+pub enum ChildLayout {
     SingleDenseList(SpotItem),
     SearchPage,
 }
 
 #[derive(Debug)]
-pub struct SwitchViewItemInit {
+pub struct ChildInit {
     spot: SpotConn,
-    layout: SwitchViewItemLayout,
+    layout: ChildLayout,
 }
 
 #[derive(Debug)]
-pub enum SwitchViewItemInput {
+pub enum ChildIn {
     MoveCursorDown,
     MoveCursorUp,
 }
 
 #[derive(Debug)]
-pub enum SwitchViewItemOutput {}
+pub enum ChildOut {}
 
 #[relm4::factory(pub)]
-impl FactoryComponent for SwitchViewItem {
-    type Init = SwitchViewItemInit;
-    type Input = SwitchViewItemInput;
-    type Output = SwitchViewItemOutput;
+impl FactoryComponent for Child {
+    type Init = ChildInit;
+    type Input = ChildIn;
+    type Output = ChildOut;
     type CommandOutput = ();
     type ParentWidget = gtk::Stack;
 
@@ -232,33 +228,32 @@ impl FactoryComponent for SwitchViewItem {
 
     fn init_model(init: Self::Init, index: &Self::Index, sender: FactorySender<Self>) -> Self {
         match init.layout {
-            SwitchViewItemLayout::SingleDenseList(ref source) => {
-                let denselist = DenseList::builder()
-                    .launch(DenseListInit {
+            ChildLayout::SingleDenseList(ref source) => {
+                let denselist = denselist::Model::builder()
+                    .launch(denselist::Init {
                         spot: init.spot.clone(),
                         source: source.clone(),
                     })
                     .forward(sender.input_sender(), |msg| match msg {
                         // When the cursor tries to escape from a single dense list,
                         // we just send it straight back to keep it within bounds.
-                        DenseListOutput::CursorEscapedUp => SwitchViewItemInput::MoveCursorDown,
-                        DenseListOutput::CursorEscapedDown => SwitchViewItemInput::MoveCursorUp,
+                        denselist::Out::CursorEscapedUp => ChildIn::MoveCursorDown,
+                        denselist::Out::CursorEscapedDown => ChildIn::MoveCursorUp,
                     });
-                SwitchViewItem {
+                Child {
                     init,
-                    denselist: SwitchViewItemChild::DenseList(denselist),
+                    denselist: ChildContent::DenseList(denselist),
                 }
             }
-            SwitchViewItemLayout::SearchPage => {
-                let sp = SearchPage::builder().launch(init.spot.clone()).forward(
-                    sender.output_sender(),
-                    |msg| match msg {
+            ChildLayout::SearchPage => {
+                let sp = searchpage::Model::builder()
+                    .launch(init.spot.clone())
+                    .forward(sender.output_sender(), |msg| match msg {
                         () => todo!(),
-                    },
-                );
-                SwitchViewItem {
+                    });
+                Child {
                     init,
-                    denselist: SwitchViewItemChild::SearchPage(sp),
+                    denselist: ChildContent::SearchPage(sp),
                 }
             }
         }
@@ -266,17 +261,17 @@ impl FactoryComponent for SwitchViewItem {
 
     fn update(&mut self, message: Self::Input, sender: FactorySender<Self>) {
         match message {
-            SwitchViewItemInput::MoveCursorDown => self.denselist.cursor_move(1),
-            SwitchViewItemInput::MoveCursorUp => self.denselist.cursor_move(-1),
+            ChildIn::MoveCursorDown => self.denselist.cursor_move(1),
+            ChildIn::MoveCursorUp => self.denselist.cursor_move(-1),
         }
     }
 }
 
-impl SwitchViewItem {
+impl Child {
     fn child_widget(&self) -> gtk::Widget {
         match &self.denselist {
-            SwitchViewItemChild::DenseList(dl) => dl.widget().clone().into(),
-            SwitchViewItemChild::SearchPage(sp) => sp.widget().clone().into(),
+            ChildContent::DenseList(dl) => dl.widget().clone().into(),
+            ChildContent::SearchPage(sp) => sp.widget().clone().into(),
         }
     }
 }

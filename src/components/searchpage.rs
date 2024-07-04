@@ -5,23 +5,21 @@ use relm4::prelude::*;
 use rspotify::model::SearchType;
 
 use crate::{
-    components::denselist::{DenseList, DenseListInit, DenseListOutput},
+    components::denselist,
     spotconn::{model::SpotItem, SpotConn},
 };
 
-use super::denselist::DenseListInput;
-
 #[derive(Debug)]
-pub struct SearchPage {
+pub struct Model {
     spot: SpotConn,
     searchbox: gtk::Entry,
     btn_go: gtk::Button,
 
-    tracks: Controller<DenseList>,
+    tracks: Controller<denselist::Model>,
 }
 
 #[derive(Debug)]
-pub enum SearchPageInput {
+pub enum In {
     FocusSearchbox,
     #[doc(hidden)]
     ExecuteSearch, // run the search for current query
@@ -30,9 +28,9 @@ pub enum SearchPageInput {
 }
 
 #[relm4::component(pub)]
-impl Component for SearchPage {
+impl Component for Model {
     type Init = SpotConn;
-    type Input = SearchPageInput;
+    type Input = In;
     type Output = ();
     type CommandOutput = ();
 
@@ -44,14 +42,14 @@ impl Component for SearchPage {
             gtk::Box::new(gtk::Orientation::Horizontal, 0) {
                 #[name="searchbox"]
                 gtk::Entry {
-                    connect_activate => SearchPageInput::ExecuteSearch,
+                    connect_activate => In::ExecuteSearch,
                 },
                 #[name="btn_go"]
                 gtk::Button {
                     gtk::Label {
                         set_label: "Go",
                     },
-                    connect_clicked => SearchPageInput::ExecuteSearch,
+                    connect_clicked => In::ExecuteSearch,
                 },
             },
 
@@ -65,49 +63,49 @@ impl Component for SearchPage {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let tracks = DenseList::builder()
-            .launch(DenseListInit {
+        let tracks = denselist::Model::builder()
+            .launch(denselist::Init {
                 spot: init.clone(),
                 source: SpotItem::UserPlaylists, // TODO: bad: should be empty, then change to search results
             })
             .forward(sender.output_sender(), |msg| match msg {
-                DenseListOutput::CursorEscapedDown => {
+                denselist::Out::CursorEscapedDown => {
                     todo!("implement cursor moves across sections")
                 }
-                DenseListOutput::CursorEscapedUp => todo!("implement cursor moves across sections"),
+                denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
             });
 
         let widgets = view_output!();
-        let model = SearchPage {
+        let model = Model {
             spot: init,
             searchbox: widgets.searchbox.clone(),
             btn_go: widgets.btn_go.clone(),
             tracks,
         };
-        sender.input_sender().emit(SearchPageInput::FocusSearchbox);
+        sender.input_sender().emit(In::FocusSearchbox);
 
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match message {
-            SearchPageInput::FocusSearchbox => {
+            In::FocusSearchbox => {
                 self.searchbox.grab_focus();
             }
-            SearchPageInput::ExecuteSearch => {
+            In::ExecuteSearch => {
                 let spot = self.spot.clone();
                 let query = self.searchbox.text().to_string();
 
                 self.tracks
-                    .emit(DenseListInput::Reset(SpotItem::SearchResults {
+                    .emit(denselist::In::Reset(SpotItem::SearchResults {
                         st: SearchType::Track,
                         query,
                     }));
                 let moved_foc = self.btn_go.grab_focus();
                 debug!("Search executing; moved focus = {}", moved_foc);
             }
-            SearchPageInput::CursorMoveDown => self.tracks.emit(DenseListInput::CursorMove(1)),
-            SearchPageInput::CursorMoveUp => self.tracks.emit(DenseListInput::CursorMove(-1)),
+            In::CursorMoveDown => self.tracks.emit(denselist::In::CursorMove(1)),
+            In::CursorMoveUp => self.tracks.emit(denselist::In::CursorMove(-1)),
         }
     }
 }

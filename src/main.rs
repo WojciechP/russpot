@@ -10,7 +10,7 @@ use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 
 use crate::actionbuilder::{AccelManager, ActionBuilder};
 use crate::components::actions::{Actions, ActionsOutput};
-use crate::components::switchview::{SwitchView, SwitchViewInit, SwitchViewInput};
+use crate::components::switchview;
 use crate::spotconn::SpotConn;
 
 mod actionbuilder;
@@ -22,7 +22,7 @@ struct AppModel {
     spot: SpotConn,
 
     actions: Controller<Actions>,
-    switchview: Controller<SwitchView>,
+    switchview: Controller<switchview::Model>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -73,8 +73,8 @@ impl relm4::SimpleComponent for AppModel {
         let _spot_track_id = SpotifyId::from_base62("416oYM4vj129L8BP7B0qlO").unwrap();
         let spot = SpotConn::new();
 
-        let switchview: Controller<SwitchView> = SwitchView::builder()
-            .launch(SwitchViewInit {})
+        let switchview: Controller<switchview::Model> = switchview::Model::builder()
+            .launch(switchview::Init {})
             .forward(sender.input_sender(), |msg| match msg {});
 
         let actions_model = Actions::builder()
@@ -107,19 +107,49 @@ impl relm4::SimpleComponent for AppModel {
 
         let mut am = AccelManager::new(&window, "global-navigation");
         let svs = &model.switchview.sender().clone();
-        am.register_emit("down", &["J"], svs, SwitchViewInput::CursorMove(1));
-        am.register_emit("up", &["K"], svs, SwitchViewInput::CursorMove(-1));
-        am.register_emit("left", &["H"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
-        am.register_emit("right", &["L"], svs, SwitchViewInput::CursorMove(0)); // TODO: implement left/right
-        am.register_emit("descend", &["O"], svs, SwitchViewInput::NavDescend); // O for Open
-        am.register_emit("back", &["I"], svs, SwitchViewInput::NavBack); // I because it's on the left side of O
+        am.register_emit(
+            "down",
+            &["J"],
+            svs,
+            switchview::In::CursorMove(1),
+        );
+        am.register_emit(
+            "up",
+            &["K"],
+            svs,
+            switchview::In::CursorMove(-1),
+        );
+        am.register_emit(
+            "left",
+            &["H"],
+            svs,
+            switchview::In::CursorMove(0),
+        ); // TODO: implement left/right
+        am.register_emit(
+            "right",
+            &["L"],
+            svs,
+            switchview::In::CursorMove(0),
+        ); // TODO: implement left/right
+        am.register_emit(
+            "descend",
+            &["O"],
+            svs,
+            switchview::In::NavDescend,
+        ); // O for Open
+        am.register_emit("back", &["I"], svs, switchview::In::NavBack); // I because it's on the left side of O
 
-        am.register_emit("reset-search", &["1"], svs, SwitchViewInput::NavResetSearch);
+        am.register_emit(
+            "reset-search",
+            &["1"],
+            svs,
+            switchview::In::NavResetSearch,
+        );
         am.register_emit(
             "reset-playlists",
             &["2"],
             svs,
-            SwitchViewInput::NavResetPlaylists,
+            switchview::In::NavResetPlaylists,
         );
 
         am.register_emit(

@@ -7,23 +7,23 @@ use rspotify::{model::Offset, prelude::*};
 
 use crate::spotconn::{model::SpotItem, SpotConn};
 
-use super::smallblock::{SmallBlock, SmallBlockOutput};
+use super::smallblock;
 
 #[derive(Debug, Clone)]
-pub struct DenseListInit {
+pub struct Init {
     pub spot: SpotConn,
     pub source: SpotItem,
 }
 
 #[derive(Debug)]
-pub struct DenseList {
-    init: DenseListInit,
-    dense_items: FactoryVecDeque<DenseItem>,
+pub struct Model {
+    init: Init,
+    dense_items: FactoryVecDeque<ChildItem>,
     cursor: Option<DynamicIndex>,
     scrollwin: gtk::ScrolledWindow,
 }
 
-impl DenseList {
+impl Model {
     fn item_under_cursor(&self) -> Option<SpotItem> {
         let item = self
             .dense_items
@@ -34,11 +34,11 @@ impl DenseList {
     /// Obtains an init struct for descending into currently selected item.
     /// Returns None if no item is selected, or the selected item
     /// cannot be descended into (it's a track).
-    pub fn descend(&self) -> Option<DenseListInit> {
+    pub fn descend(&self) -> Option<Init> {
         match self.item_under_cursor()? {
             // Tracks cannot be descended into, anything else can:
             SpotItem::Track(_) => None,
-            item => Some(DenseListInit {
+            item => Some(Init {
                 spot: self.init.spot.clone(),
                 source: item.clone(),
             }),
@@ -81,7 +81,7 @@ impl DenseList {
 }
 
 #[derive(Debug)]
-pub enum DenseListInput {
+pub enum In {
     CursorMove(i32),
     MoveCursorTo(DynamicIndex),
     DestroyCursor,
@@ -89,22 +89,22 @@ pub enum DenseListInput {
 }
 
 #[derive(Debug)]
-pub enum DenseListOutput {
+pub enum Out {
     CursorEscapedDown,
     CursorEscapedUp,
 }
 
 #[derive(Debug)]
-pub enum DenseListCommandOutput {
+pub enum CmdOut {
     AddItem(SpotItem),
 }
 
 #[relm4::component(pub)]
-impl relm4::Component for DenseList {
-    type Init = DenseListInit;
-    type Input = DenseListInput;
-    type Output = DenseListOutput;
-    type CommandOutput = DenseListCommandOutput;
+impl relm4::Component for Model {
+    type Init = Init;
+    type Input = In;
+    type Output = Out;
+    type CommandOutput = CmdOut;
 
     view! {
         #[root]
@@ -130,14 +130,14 @@ impl relm4::Component for DenseList {
     ) -> relm4::ComponentParts<Self> {
         // Old-style PlaylistItem children:
         // New-style DenseItem children
-        let dense_items = FactoryVecDeque::<DenseItem>::builder()
+        let dense_items = FactoryVecDeque::<ChildItem>::builder()
             .launch(gtk::Box::default())
             // Forward DenseItem output messages to our own input, so that we can handle cursor movements:
             .forward(sender.input_sender(), move |out| match out {
-                DenseItemOutput::Clicked(idx) => DenseListInput::MoveCursorTo(idx),
+                ChildOut::Clicked(idx) => In::MoveCursorTo(idx),
             });
 
-        let mut model = DenseList {
+        let mut model = Model {
             init,
             dense_items,
             cursor: None,
@@ -148,14 +148,14 @@ impl relm4::Component for DenseList {
         let widgets = view_output!();
         model.scrollwin = widgets.scrollboxes.clone();
 
-        DenseList::init_data_loading(&model.init.spot, &model.init.source, &sender);
+        Model::init_data_loading(&model.init.spot, &model.init.source, &sender);
 
         relm4::ComponentParts { model, widgets }
     }
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
-            DenseListInput::DestroyCursor => {
+            In::DestroyCursor => {
                 let mut items = self.dense_items.guard();
                 if let Some(item) = self
                     .cursor
@@ -166,12 +166,12 @@ impl relm4::Component for DenseList {
                 }
                 self.cursor = None;
             }
-            DenseListInput::Reset(source) => {
+            In::Reset(source) => {
                 self.init.source = source;
                 self.dense_items.guard().clear();
-                DenseList::init_data_loading(&self.init.spot, &self.init.source, &sender);
+                Model::init_data_loading(&self.init.spot, &self.init.source, &sender);
             }
-            DenseListInput::MoveCursorTo(dyn_idx) => {
+            In::MoveCursorTo(dyn_idx) => {
                 let mut items = self.dense_items.guard();
                 let mut move_focus_to: Option<gtk::Button> = None;
                 if let Some(item) = self
@@ -194,7 +194,7 @@ impl relm4::Component for DenseList {
                     self.ensure_visible(&next);
                 }
             }
-            DenseListInput::CursorMove(delta) => {
+            In::CursorMove(delta) => {
                 let next_id = match self.cursor.clone() {
                     Some(cursor) => {
                         // TODO: remove the next line, has_cursor=false is handled in MoveCursorTo
@@ -206,16 +206,12 @@ impl relm4::Component for DenseList {
                         let idx = cursor.current_index() as i32;
                         if idx + delta < 0 {
                             warn!("cursor up out of the list");
-                            sender
-                                .output_sender()
-                                .emit(DenseListOutput::CursorEscapedUp);
+                            sender.output_sender().emit(Out::CursorEscapedUp);
                             return;
                         }
                         if (idx + delta) as usize >= self.dense_items.len() {
                             warn!("cursor down out of the list");
-                            sender
-                                .output_sender()
-                                .emit(DenseListOutput::CursorEscapedDown);
+                            sender.output_sender().emit(Out::CursorEscapedDown);
                             return;
                         }
                         (idx + delta) as usize
@@ -226,7 +222,7 @@ impl relm4::Component for DenseList {
                 match self.dense_items.get(next_id) {
                     Some(next) => sender
                         .input_sender()
-                        .emit(DenseListInput::MoveCursorTo(next.self_idx.clone())),
+                        .emit(In::MoveCursorTo(next.self_idx.clone())),
                     None => {
                         error!("should never happen: next_id is within range, yet no child.")
                     }
@@ -241,7 +237,7 @@ impl relm4::Component for DenseList {
         root: &Self::Root,
     ) {
         match message {
-            DenseListCommandOutput::AddItem(item) => {
+            CmdOut::AddItem(item) => {
                 let spot = self.init.spot.clone();
                 self.dense_items.guard().push_back(item);
             }
@@ -249,7 +245,7 @@ impl relm4::Component for DenseList {
     }
 }
 
-impl DenseList {
+impl Model {
     /// Scrolls the list to make sure that the passed child is visible.
     fn ensure_visible(&self, widget: &gtk::Button) {
         let point = widget
@@ -278,59 +274,57 @@ impl DenseList {
         Some(item.sb.model().get_content().clone())
     }
 
-    fn init_data_loading(spot: &SpotConn, source: &SpotItem, sender: &ComponentSender<DenseList>) {
+    fn init_data_loading(spot: &SpotConn, source: &SpotItem, sender: &ComponentSender<Model>) {
         let spot = spot.clone();
         debug!("Initializing data load for source {:?}", source);
         match source.clone() {
             SpotItem::UserPlaylists => sender.command(move |out, shutdown| {
                 spot.current_user_playlists_until_shutdown(shutdown, move |sp| {
-                    out.emit(DenseListCommandOutput::AddItem(SpotItem::Playlist(sp)))
+                    out.emit(CmdOut::AddItem(SpotItem::Playlist(sp)))
                 })
             }),
 
             SpotItem::Playlist(sp) => sender.command(move |out, shutdown| {
                 spot.tracks_in_playlist(shutdown, sp.id.uri(), move |ft| {
-                    out.emit(DenseListCommandOutput::AddItem(SpotItem::Track(ft)))
+                    out.emit(CmdOut::AddItem(SpotItem::Track(ft)))
                 })
             }),
             SpotItem::Track(_) => {
                 panic!("a single track should never be rendered as a list");
             }
             SpotItem::SearchResults { st, query } => sender.command(move |out, shutdown| {
-                spot.search(st, query, move |item| {
-                    out.emit(DenseListCommandOutput::AddItem(item))
-                })
+                spot.search(st, query, move |item| out.emit(CmdOut::AddItem(item)))
             }),
         }
     }
 }
 
-/// A FactoryComponent for DenseList. This is just a factory-enabled wrapper around SmallBlock.
+/// A FactoryComponent for DenseList. This is just a factory-enabled wrapper around smallblock::Model.
 #[derive(Debug)]
-struct DenseItem {
-    sb: Controller<SmallBlock>,
+struct ChildItem {
+    sb: Controller<smallblock::Model>,
     has_cursor: bool,
     self_idx: DynamicIndex,
 }
 
 #[derive(Debug)]
-enum DenseItemInput {}
+enum ChildIn {}
 
 #[derive(Debug)]
-enum DenseItemOutput {
+enum ChildOut {
     Clicked(DynamicIndex),
 }
 
 #[relm4::factory]
-impl FactoryComponent for DenseItem {
+impl FactoryComponent for ChildItem {
     type Init = SpotItem;
-    type Input = DenseItemInput;
-    type Output = DenseItemOutput;
+    type Input = ChildIn;
+    type Output = ChildOut;
     type ParentWidget = gtk::Box;
     type CommandOutput = ();
 
     view! {
-        // Ideally we would put the SmallBlock widget here directly.
+        // Ideally we would put the smallblock::Model widget here directly.
         // This doesn't work, though: relm4 expects one top-level component first,
         // so let's use a box. On the pro side, we can attach cursor-related
         // CSS classes here.
@@ -345,13 +339,13 @@ impl FactoryComponent for DenseItem {
     }
 
     fn init_model(init: Self::Init, index: &Self::Index, sender: FactorySender<Self>) -> Self {
-        let sb = SmallBlock::builder().launch(init);
+        let sb = smallblock::Model::builder().launch(init);
         let cloned_index = index.clone();
-        // Forward SmallBlock output messages directly as DenseItem output messages:
+        // Forward smallblock::Model output messages directly as DenseItem output messages:
         let sb = sb.forward(sender.output_sender(), move |msg| match msg {
-            SmallBlockOutput::Clicked => DenseItemOutput::Clicked(cloned_index.clone()),
+            smallblock::Out::Clicked => ChildOut::Clicked(cloned_index.clone()),
         });
-        DenseItem {
+        ChildItem {
             sb,
             has_cursor: false,
             self_idx: index.clone(),
