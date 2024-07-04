@@ -5,7 +5,7 @@
 pub mod model;
 
 use futures::TryStreamExt;
-use log::debug;
+use log::{debug, error};
 use std::collections::HashSet;
 
 use std::sync::RwLock;
@@ -24,11 +24,14 @@ use librespot::{
     discovery::Credentials,
 };
 use rspotify::model::{
-    FullTrack, Offset, PlayContextId, PlayableItem, PlaylistId, SimplifiedPlaylist,
+    FullTrack, Offset, PlayContextId, PlayableItem, PlaylistId, SearchResult, SearchType,
+    SimplifiedPlaylist,
 };
-use rspotify::Config;
 use rspotify::{clients::BaseClient, clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
+use rspotify::{ClientResult, Config};
 use tokio::sync::OnceCell;
+
+use self::model::SpotItem;
 
 struct LibreSpotConn {
     session: Session,
@@ -201,6 +204,29 @@ impl SpotConn {
             })
             .drop_on_shutdown()
             .await
+    }
+
+    pub async fn search<F>(self, st: SearchType, query: String, f: F)
+    where
+        F: Fn(SpotItem),
+    {
+        let spot = self.rspot().await;
+        match spot.search(&query, st, None, None, None, None).await {
+            ClientResult::Err(e) => {
+                error!("Search failed: {:?}", e);
+            }
+            ClientResult::Ok(SearchResult::Tracks(tracks)) => tracks
+                .items
+                .into_iter()
+                .for_each(|track| f(SpotItem::Track(track))),
+            ClientResult::Ok(SearchResult::Playlists(playlists)) => playlists
+                .items
+                .into_iter()
+                .for_each(|playlist| f(SpotItem::Playlist(playlist))),
+            ClientResult::Ok(thing) => {
+                error!("Search not implemented for {:?}", thing);
+            }
+        };
     }
 
     pub async fn play_context(&self, ctx: PlayContextId<'_>, offset: Option<Offset>) {

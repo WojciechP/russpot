@@ -72,7 +72,7 @@ impl Component for SmallBlock {
 
                     gtk::Label {
                         set_css_classes: &["name"],
-                        set_label: model.init.name(),
+                        set_label: &model.init.name(),
                         set_xalign: 0.0,
                     },
                     gtk::Label {

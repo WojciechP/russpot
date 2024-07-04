@@ -2,12 +2,12 @@
 #![allow(unused_variables)]
 
 use gtk::prelude::*;
-use log::{debug, warn};
+use log::{debug};
 use relm4::{factory::FactoryVecDeque, prelude::*};
 
 use super::{
-    denselist::{DenseList, DenseListInit, DenseListInput},
-    searchpage::SearchPage,
+    denselist::{DenseList, DenseListInit, DenseListInput, DenseListOutput},
+    searchpage::{SearchPage, SearchPageInput},
 };
 use crate::spotconn::{model::SpotItem, SpotConn};
 
@@ -172,7 +172,11 @@ impl SwitchViewItemChild {
         match self {
             SwitchViewItemChild::DenseList(dl) => dl.emit(DenseListInput::CursorMove(delta)),
             SwitchViewItemChild::SearchPage(sp) => {
-                warn!("cursor moves for search not implemented yet")
+                if delta > 0 {
+                    sp.emit(SearchPageInput::CursorMoveDown)
+                } else {
+                    sp.emit(SearchPageInput::CursorMoveUp)
+                }
             }
         }
     }
@@ -197,7 +201,10 @@ pub struct SwitchViewItemInit {
 }
 
 #[derive(Debug)]
-pub enum SwitchViewItemInput {}
+pub enum SwitchViewItemInput {
+    MoveCursorDown,
+    MoveCursorUp,
+}
 
 #[derive(Debug)]
 pub enum SwitchViewItemOutput {}
@@ -231,23 +238,36 @@ impl FactoryComponent for SwitchViewItem {
                         spot: init.spot.clone(),
                         source: source.clone(),
                     })
-                    .forward(sender.output_sender(), |msg| match msg {});
+                    .forward(sender.input_sender(), |msg| match msg {
+                        // When the cursor tries to escape from a single dense list,
+                        // we just send it straight back to keep it within bounds.
+                        DenseListOutput::CursorEscapedUp => SwitchViewItemInput::MoveCursorDown,
+                        DenseListOutput::CursorEscapedDown => SwitchViewItemInput::MoveCursorUp,
+                    });
                 SwitchViewItem {
                     init,
                     denselist: SwitchViewItemChild::DenseList(denselist),
                 }
             }
             SwitchViewItemLayout::SearchPage => {
-                let sp = SearchPage::builder()
-                    .launch(())
-                    .forward(sender.output_sender(), |msg| match msg {
+                let sp = SearchPage::builder().launch(init.spot.clone()).forward(
+                    sender.output_sender(),
+                    |msg| match msg {
                         () => todo!(),
-                    });
+                    },
+                );
                 SwitchViewItem {
                     init,
                     denselist: SwitchViewItemChild::SearchPage(sp),
                 }
             }
+        }
+    }
+
+    fn update(&mut self, message: Self::Input, sender: FactorySender<Self>) {
+        match message {
+            SwitchViewItemInput::MoveCursorDown => self.denselist.cursor_move(1),
+            SwitchViewItemInput::MoveCursorUp => self.denselist.cursor_move(-1),
         }
     }
 }

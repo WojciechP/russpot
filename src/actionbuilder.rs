@@ -1,7 +1,7 @@
 use std::{cell::RefCell, collections::HashMap};
 
 use gtk::prelude::*;
-use log::info;
+
 use relm4::Sender;
 
 /// A helper for building keyboard-accelerated stateless actions.

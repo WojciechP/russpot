@@ -84,10 +84,15 @@ impl DenseList {
 pub enum DenseListInput {
     CursorMove(i32),
     MoveCursorTo(DynamicIndex),
+    DestroyCursor,
+    Reset(SpotItem),
 }
 
 #[derive(Debug)]
-pub enum DenseListOutput {}
+pub enum DenseListOutput {
+    CursorEscapedDown,
+    CursorEscapedUp,
+}
 
 #[derive(Debug)]
 pub enum DenseListCommandOutput {
@@ -148,8 +153,24 @@ impl relm4::Component for DenseList {
         relm4::ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
+            DenseListInput::DestroyCursor => {
+                let mut items = self.dense_items.guard();
+                if let Some(item) = self
+                    .cursor
+                    .clone()
+                    .and_then(|cursor| items.get_mut(cursor.current_index()))
+                {
+                    item.has_cursor = false;
+                }
+                self.cursor = None;
+            }
+            DenseListInput::Reset(source) => {
+                self.init.source = source;
+                self.dense_items.guard().clear();
+                DenseList::init_data_loading(&self.init.spot, &self.init.source, &sender);
+            }
             DenseListInput::MoveCursorTo(dyn_idx) => {
                 let mut items = self.dense_items.guard();
                 let mut move_focus_to: Option<gtk::Button> = None;
@@ -176,27 +197,34 @@ impl relm4::Component for DenseList {
             DenseListInput::CursorMove(delta) => {
                 let next_id = match self.cursor.clone() {
                     Some(cursor) => {
-                        let idx = cursor.current_index() as i32;
-                        if idx + delta < 0 {
-                            warn!("not moving the cursor up out of the list");
-                            return;
-                        }
-                        if (idx + delta) as usize >= self.dense_items.len() {
-                            warn!("not moving the cursor down out of the list");
-                            return;
-                        }
+                        // TODO: remove the next line, has_cursor=false is handled in MoveCursorTo
                         self.dense_items
                             .guard()
                             .get_mut(cursor.current_index())
                             .unwrap()
                             .has_cursor = false;
+                        let idx = cursor.current_index() as i32;
+                        if idx + delta < 0 {
+                            warn!("cursor up out of the list");
+                            sender
+                                .output_sender()
+                                .emit(DenseListOutput::CursorEscapedUp);
+                            return;
+                        }
+                        if (idx + delta) as usize >= self.dense_items.len() {
+                            warn!("cursor down out of the list");
+                            sender
+                                .output_sender()
+                                .emit(DenseListOutput::CursorEscapedDown);
+                            return;
+                        }
                         (idx + delta) as usize
                     }
                     None if delta > 0 => 0,
                     None => self.dense_items.len() - 1,
                 };
                 match self.dense_items.get(next_id) {
-                    Some(next) => _sender
+                    Some(next) => sender
                         .input_sender()
                         .emit(DenseListInput::MoveCursorTo(next.self_idx.clone())),
                     None => {
@@ -268,6 +296,11 @@ impl DenseList {
             SpotItem::Track(_) => {
                 panic!("a single track should never be rendered as a list");
             }
+            SpotItem::SearchResults { st, query } => sender.command(move |out, shutdown| {
+                spot.search(st, query, move |item| {
+                    out.emit(DenseListCommandOutput::AddItem(item))
+                })
+            }),
         }
     }
 }
