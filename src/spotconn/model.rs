@@ -1,9 +1,9 @@
-
-
-use rspotify::model::{FullTrack, PlayContextId, SearchType, SimplifiedPlaylist};
+use rspotify::model::{
+    FullAlbum, FullTrack, PlayContextId, SearchType, SimplifiedAlbum, SimplifiedPlaylist,
+};
 use rspotify::prelude::*;
 
-fn format_search_type(st: &SearchType) -> &str {
+pub fn format_search_type(st: &SearchType) -> &str {
     match st {
         SearchType::Artist => "artists",
         SearchType::Track => "songs",
@@ -19,6 +19,7 @@ fn format_search_type(st: &SearchType) -> &str {
 #[derive(Clone)]
 pub enum SpotItem {
     Track(FullTrack),
+    Album(SimplifiedAlbum),
     Playlist(SimplifiedPlaylist),
     UserPlaylists,
     SearchResults { st: SearchType, query: String },
@@ -29,6 +30,7 @@ impl SpotItem {
     pub fn name(&self) -> String {
         match self {
             SpotItem::Track(ft) => ft.name.clone(),
+            SpotItem::Album(a) => a.name.clone(),
             SpotItem::Playlist(sp) => sp.name.clone(),
             SpotItem::UserPlaylists => "Saved playlists".to_string(),
             SpotItem::SearchResults { st, ref query } => {
@@ -46,6 +48,12 @@ impl SpotItem {
                 .map(|a| a.name.clone())
                 .collect::<Vec<String>>()
                 .join(", "),
+            SpotItem::Album(a) => a
+                .artists
+                .iter()
+                .map(|a| a.name.clone())
+                .collect::<Vec<String>>()
+                .join(", "),
             SpotItem::Playlist(sp) => sp.owner.display_name.clone().unwrap_or("".to_string()),
             SpotItem::UserPlaylists => "You".to_string(),
             SpotItem::SearchResults { .. } => "".to_string(),
@@ -56,6 +64,7 @@ impl SpotItem {
     pub fn uri(&self) -> Option<String> {
         match self {
             SpotItem::Track(ft) => ft.id.as_ref().map(|id| id.uri()),
+            SpotItem::Album(a) => a.id.as_ref().map(|id| id.uri()),
             SpotItem::Playlist(sp) => Some(sp.id.uri()),
             SpotItem::UserPlaylists => None,
             SpotItem::SearchResults { .. } => None,
@@ -66,6 +75,7 @@ impl SpotItem {
     pub fn href(&self) -> Option<&str> {
         match self {
             SpotItem::Track(ft) => ft.href.as_deref(),
+            SpotItem::Album(a) => a.href.as_deref(),
             SpotItem::Playlist(sp) => Some(&sp.href),
             SpotItem::UserPlaylists => None,
             SpotItem::SearchResults { .. } => None,
@@ -76,6 +86,7 @@ impl SpotItem {
     pub fn img_url(&self) -> Option<&str> {
         match self {
             SpotItem::Track(ft) => &ft.album.images,
+            SpotItem::Album(a) => &a.images,
             SpotItem::Playlist(sp) => &sp.images,
             SpotItem::UserPlaylists => return None,
             SpotItem::SearchResults { .. } => return None,
@@ -90,6 +101,7 @@ impl SpotItem {
     pub fn context_id(&self) -> Option<PlayContextId<'_>> {
         match self {
             SpotItem::Track(_) => None,
+            SpotItem::Album(a) => a.id.clone().map(PlayContextId::Album),
             SpotItem::Playlist(sp) => Some(PlayContextId::Playlist(sp.id.clone())),
             SpotItem::UserPlaylists => None,
             SpotItem::SearchResults { .. } => None,

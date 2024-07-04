@@ -24,8 +24,8 @@ use librespot::{
     discovery::Credentials,
 };
 use rspotify::model::{
-    FullTrack, Offset, PlayContextId, PlayableItem, PlaylistId, SearchResult, SearchType,
-    SimplifiedPlaylist,
+    AlbumId, FullTrack, Offset, PlayContextId, PlayableItem, PlaylistId, SearchResult, SearchType,
+    SimplifiedPlaylist, TrackId,
 };
 use rspotify::{clients::BaseClient, clients::OAuthClient, AuthCodeSpotify, Token as RSToken};
 use rspotify::{ClientResult, Config};
@@ -206,6 +206,38 @@ impl SpotConn {
             .await
     }
 
+    pub async fn tracks_in_album<F>(self, shutdown: relm4::ShutdownReceiver, uri: String, f: F)
+    where
+        F: Fn(FullTrack),
+    {
+        // Sadly, Spotify Web API only returns SimplifiedTrack items for album_track API call.
+        // That is different from playlist_items call, which returns FullTrack objects.
+        // The SimplifiedTrack objects don't have album data, because the assumption is that
+        // the caller has the album already.
+        // We could reconstruct FullTrack from SimplifiedTrack+Album, but for now
+        // let's just run a second API call to re-fetch the necessary items.
+        // TODO: Optimize the second call away, perhaps introduce our own Track type.
+        shutdown
+            .register(async {
+                let rspot = self.rspot().await;
+                let mut stream = rspot.album_track(AlbumId::from_uri(&uri).unwrap(), None);
+                let mut track_ids: Vec<TrackId<'_>> = Vec::new();
+                while let Some(item) = stream.try_next().await.unwrap() {
+                    if let Some(id) = item.id {
+                        track_ids.push(id);
+                    }
+                }
+                match rspot.tracks(track_ids, None).await {
+                    ClientResult::Ok(tracks) => tracks.into_iter().for_each(f),
+                    ClientResult::Err(e) => {
+                        error!("Failed to load tracks in {}: {:?}", uri, e);
+                    }
+                }
+            })
+            .drop_on_shutdown()
+            .await
+    }
+
     pub async fn search<F>(self, st: SearchType, query: String, f: F)
     where
         F: Fn(SpotItem),
@@ -223,6 +255,9 @@ impl SpotConn {
                 .items
                 .into_iter()
                 .for_each(|playlist| f(SpotItem::Playlist(playlist))),
+            ClientResult::Ok(SearchResult::Albums(albums)) => {
+                albums.items.into_iter().for_each(|a| f(SpotItem::Album(a)))
+            }
             ClientResult::Ok(thing) => {
                 error!("Search not implemented for {:?}", thing);
             }

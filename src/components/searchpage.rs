@@ -15,6 +15,7 @@ pub struct Model {
     searchbox: gtk::Entry,
     btn_go: gtk::Button,
 
+    albums: Controller<denselist::Model>,
     tracks: Controller<denselist::Model>,
 }
 
@@ -53,6 +54,7 @@ impl Component for Model {
                 },
             },
 
+    albums.widget(),
             tracks.widget(),
         },
 
@@ -74,12 +76,24 @@ impl Component for Model {
                 }
                 denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
             });
+        let albums = denselist::Model::builder()
+            .launch(denselist::Init {
+                spot: init.clone(),
+                source: SpotItem::UserPlaylists, // TODO: bad: should be empty, then change to search results
+            })
+            .forward(sender.output_sender(), |msg| match msg {
+                denselist::Out::CursorEscapedDown => {
+                    todo!("implement cursor moves across sections")
+                }
+                denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
+            });
 
         let widgets = view_output!();
         let model = Model {
             spot: init,
             searchbox: widgets.searchbox.clone(),
             btn_go: widgets.btn_go.clone(),
+            albums,
             tracks,
         };
         sender.input_sender().emit(In::FocusSearchbox);
@@ -99,13 +113,26 @@ impl Component for Model {
                 self.tracks
                     .emit(denselist::In::Reset(SpotItem::SearchResults {
                         st: SearchType::Track,
+                        query: query.clone(),
+                    }));
+                self.albums
+                    .emit(denselist::In::Reset(SpotItem::SearchResults {
+                        st: SearchType::Album,
                         query,
                     }));
-                let moved_foc = self.btn_go.grab_focus();
-                debug!("Search executing; moved focus = {}", moved_foc);
+                self.btn_go.grab_focus();
             }
-            In::CursorMoveDown => self.tracks.emit(denselist::In::CursorMove(1)),
-            In::CursorMoveUp => self.tracks.emit(denselist::In::CursorMove(-1)),
+            In::CursorMoveDown => self.albums.emit(denselist::In::CursorMove(1)),
+            In::CursorMoveUp => self.albums.emit(denselist::In::CursorMove(-1)),
         }
+    }
+}
+
+impl Model {
+    pub fn descend(&self) -> Option<denselist::Init> {
+        self.albums
+            .model()
+            .descend()
+            .or(self.tracks.model().descend())
     }
 }

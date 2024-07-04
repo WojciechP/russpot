@@ -5,7 +5,10 @@ use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use rspotify::{model::Offset, prelude::*};
 
-use crate::spotconn::{model::SpotItem, SpotConn};
+use crate::spotconn::{
+    model::{format_search_type, SpotItem},
+    SpotConn,
+};
 
 use super::smallblock;
 
@@ -35,6 +38,7 @@ impl Model {
     /// Returns None if no item is selected, or the selected item
     /// cannot be descended into (it's a track).
     pub fn descend(&self) -> Option<Init> {
+        debug!("Attempting a descent into {:?}", self.item_under_cursor());
         match self.item_under_cursor()? {
             // Tracks cannot be descended into, anything else can:
             SpotItem::Track(_) => None,
@@ -115,6 +119,11 @@ impl relm4::Component for Model {
             #[name="scrollboxes"]
             gtk::ScrolledWindow {
                 set_hexpand: true,
+
+                gtk::Label {
+                    set_label: &model.list_title(),
+                },
+
                 #[local_ref]
                 dense_list -> gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
@@ -269,6 +278,15 @@ impl Model {
         }
     }
 
+    fn list_title(&self) -> String {
+        match self.init.source {
+            SpotItem::SearchResults { ref st, ref query } => {
+                format!("{} matching {}", format_search_type(st), query)
+            }
+            _ => "".to_string(),
+        }
+    }
+
     pub fn current_item(&self) -> Option<SpotItem> {
         let item = self.dense_items.get(self.cursor.clone()?.current_index())?;
         Some(item.sb.model().get_content().clone())
@@ -292,6 +310,19 @@ impl Model {
             SpotItem::Track(_) => {
                 panic!("a single track should never be rendered as a list");
             }
+            SpotItem::Album(a) => match source.uri() {
+                Some(uri) => sender.command(move |out, shutdown| {
+                    spot.tracks_in_album(shutdown, uri, move |ft| {
+                        out.emit(CmdOut::AddItem(SpotItem::Track(ft)))
+                    })
+                }),
+                None => {
+                    error!(
+                        "Cannot fetch tracks for album {}, as it does not have an URI.",
+                        a.name
+                    );
+                }
+            },
             SpotItem::SearchResults { st, query } => sender.command(move |out, shutdown| {
                 spot.search(st, query, move |item| out.emit(CmdOut::AddItem(item)))
             }),

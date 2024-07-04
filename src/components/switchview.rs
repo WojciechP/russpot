@@ -160,7 +160,7 @@ impl ChildContent {
     fn descend(&self) -> Option<denselist::Init> {
         match self {
             ChildContent::DenseList(dl) => dl.model().descend(),
-            ChildContent::SearchPage(sp) => None, // TODO: implement descend for search
+            ChildContent::SearchPage(sp) => sp.model().descend(),
         }
     }
 
