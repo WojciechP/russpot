@@ -28,11 +28,16 @@ pub enum In {
     CursorMoveUp,
 }
 
+#[derive(Debug)]
+pub enum Out {
+    CursorIsNowAt(SpotItem),
+}
+
 #[relm4::component(pub)]
 impl Component for Model {
     type Init = SpotConn;
     type Input = In;
-    type Output = ();
+    type Output = Out;
     type CommandOutput = ();
 
     view! {
@@ -54,7 +59,7 @@ impl Component for Model {
                 },
             },
 
-    albums.widget(),
+            albums.widget(),
             tracks.widget(),
         },
 
@@ -75,6 +80,7 @@ impl Component for Model {
                     todo!("implement cursor moves across sections")
                 }
                 denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
+                denselist::Out::CursorIsNowAt(item) => Out::CursorIsNowAt(item),
             });
         let albums = denselist::Model::builder()
             .launch(denselist::Init {
@@ -86,6 +92,7 @@ impl Component for Model {
                     todo!("implement cursor moves across sections")
                 }
                 denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
+                denselist::Out::CursorIsNowAt(item) => Out::CursorIsNowAt(item),
             });
 
         let widgets = view_output!();

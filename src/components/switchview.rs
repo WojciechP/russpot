@@ -13,6 +13,7 @@ pub struct Model {
     spot: SpotConn,
     views: FactoryVecDeque<Child>,
     gtk_stack: gtk::Stack,
+    scrollwin: gtk::ScrolledWindow,
 }
 
 #[derive(Debug)]
@@ -20,6 +21,8 @@ pub struct Init {}
 
 #[derive(Debug, Clone, Copy)]
 pub enum In {
+    #[doc(hidden)]
+    EnsureCurrentVisible,
     /// Move cursor down (+1) or up (-1).
     CursorMove(i32),
     /// Descend into selected playlist or album.
@@ -50,9 +53,12 @@ impl relm4::Component for Model {
         gtk::Box::new(gtk::Orientation::Horizontal, 0) {
             set_vexpand: true,
             set_height_request: 400,
-            #[local_ref]
-            view_widgets -> gtk::Stack {
-                set_vexpand: true,
+            #[name="scrollwin"]
+            gtk::ScrolledWindow {
+                #[local_ref]
+                view_widgets -> gtk::Stack {
+                    set_vexpand: true,
+                }
             }
         }
     }
@@ -68,21 +74,28 @@ impl relm4::Component for Model {
     ) -> ComponentParts<Self> {
         let views = FactoryVecDeque::<Child>::builder()
             .launch(gtk::Stack::new())
-            .forward(sender.output_sender(), move |out| match out {});
+            .forward(sender.input_sender(), move |out| match out {
+                ChildOut::CursorIsNowAt(_) => In::EnsureCurrentVisible,
+            });
         let mut model = Model {
             spot: SpotConn::new(), //TODO: accept from parent
             views,
             gtk_stack: gtk::Stack::default(),
+            scrollwin: gtk::ScrolledWindow::new(),
         };
         let view_widgets = model.views.widget();
         let widgets = view_output!();
         model.gtk_stack = view_widgets.clone();
         sender.input_sender().emit(In::NavResetPlaylists);
+        model.scrollwin = widgets.scrollwin.clone();
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>, root: &Self::Root) {
         match message {
+            In::EnsureCurrentVisible => {
+                self.ensure_current_visible();
+            }
             In::CursorMove(delta) => {
                 self.views
                     .guard()
@@ -90,6 +103,10 @@ impl relm4::Component for Model {
                     .expect("page stack cannot be empty")
                     .denselist
                     .cursor_move(delta);
+                // Scroll the view so that the newly selected item is still visible.
+                // We're using a message here, instead of direct function call,
+                // so that the cursor has time to move before the calculation happens.
+                sender.input_sender().emit(In::EnsureCurrentVisible);
             }
             In::NavDescend => {
                 let mut pages = self.views.guard();
@@ -148,6 +165,34 @@ impl Model {
             _ => None,
         })
     }
+
+    /// Scrolls the list to make sure that the passed child is visible.
+    /// Returns the delta in pixels.
+    /// Returns None if no scrollng was performed.
+    fn ensure_current_visible(&self) -> Option<f64> {
+        let widget = self.current_list()?.model().current_widget()?;
+
+        let point = widget.compute_point(&self.scrollwin, &gtk::graphene::Point::new(0.0, 0.0))?;
+        let mut delta: f64 = 0.0;
+
+        let height = self.scrollwin.height() as f64;
+        let point_y = point.y() as f64;
+        if point_y < 0.0 {
+            delta = point_y - 20.0; // 20 margin
+        }
+        if point_y + 40.0 > height {
+            delta = point_y + 40.0 - height;
+        }
+        if delta != 0.0 {
+            let adj = self.scrollwin.vadjustment();
+            debug!("Correcting adjustment from {} by {}", adj.value(), delta);
+            adj.set_value(adj.value() + delta);
+            self.scrollwin.set_vadjustment(Some(&adj));
+            Some(delta)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -203,7 +248,9 @@ pub enum ChildIn {
 }
 
 #[derive(Debug)]
-pub enum ChildOut {}
+pub enum ChildOut {
+    CursorIsNowAt(SpotItem),
+}
 
 #[relm4::factory(pub)]
 impl FactoryComponent for Child {
@@ -234,11 +281,18 @@ impl FactoryComponent for Child {
                         spot: init.spot.clone(),
                         source: source.clone(),
                     })
-                    .forward(sender.input_sender(), |msg| match msg {
+                    .connect_receiver(move |child_sender, msg| match msg {
                         // When the cursor tries to escape from a single dense list,
                         // we just send it straight back to keep it within bounds.
-                        denselist::Out::CursorEscapedUp => ChildIn::MoveCursorDown,
-                        denselist::Out::CursorEscapedDown => ChildIn::MoveCursorUp,
+                        denselist::Out::CursorEscapedUp => {
+                            sender.input_sender().emit(ChildIn::MoveCursorDown)
+                        }
+                        denselist::Out::CursorEscapedDown => {
+                            sender.input_sender().emit(ChildIn::MoveCursorUp)
+                        }
+                        denselist::Out::CursorIsNowAt(item) => {
+                            sender.output_sender().emit(ChildOut::CursorIsNowAt(item))
+                        }
                     });
                 Child {
                     init,
@@ -249,7 +303,7 @@ impl FactoryComponent for Child {
                 let sp = searchpage::Model::builder()
                     .launch(init.spot.clone())
                     .forward(sender.output_sender(), |msg| match msg {
-                        () => todo!(),
+                        searchpage::Out::CursorIsNowAt(item) => ChildOut::CursorIsNowAt(item),
                     });
                 Child {
                     init,

@@ -23,7 +23,6 @@ pub struct Model {
     init: Init,
     dense_items: FactoryVecDeque<ChildItem>,
     cursor: Option<DynamicIndex>,
-    scrollwin: gtk::ScrolledWindow,
 }
 
 impl Model {
@@ -96,6 +95,7 @@ pub enum In {
 pub enum Out {
     CursorEscapedDown,
     CursorEscapedUp,
+    CursorIsNowAt(SpotItem),
 }
 
 #[derive(Debug)]
@@ -116,18 +116,15 @@ impl relm4::Component for Model {
             set_orientation: gtk::Orientation::Horizontal,
             set_hexpand: true,
             set_vexpand: true,
-            #[name="scrollboxes"]
-            gtk::ScrolledWindow {
+
+            gtk::Label {
+                set_label: &model.list_title(),
+            },
+
+            #[local_ref]
+            dense_list -> gtk::Box {
                 set_hexpand: true,
-
-                gtk::Label {
-                    set_label: &model.list_title(),
-                },
-
-                #[local_ref]
-                dense_list -> gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                }
+                set_orientation: gtk::Orientation::Vertical,
             }
         }
     }
@@ -150,12 +147,10 @@ impl relm4::Component for Model {
             init,
             dense_items,
             cursor: None,
-            scrollwin: gtk::ScrolledWindow::new(),
         };
         let dense_list = model.dense_items.widget();
 
         let widgets = view_output!();
-        model.scrollwin = widgets.scrollboxes.clone();
 
         Model::init_data_loading(&model.init.spot, &model.init.source, &sender);
 
@@ -195,12 +190,11 @@ impl relm4::Component for Model {
                         item.has_cursor = true;
                         self.cursor = Some(dyn_idx);
                         move_focus_to = Some(item.sb.widget().clone());
+                        sender
+                            .output_sender()
+                            .emit(Out::CursorIsNowAt(item.sb.model().get_content().clone()));
                     }
                     None => error!("cannot set cursor, message back up?"),
-                }
-                drop(items); // release guard on items to be able to call ensure_visible
-                if let Some(next) = move_focus_to {
-                    self.ensure_visible(&next);
                 }
             }
             In::CursorMove(delta) => {
@@ -212,6 +206,7 @@ impl relm4::Component for Model {
                             .get_mut(cursor.current_index())
                             .unwrap()
                             .has_cursor = false;
+                        self.cursor = None;
                         let idx = cursor.current_index() as i32;
                         if idx + delta < 0 {
                             warn!("cursor up out of the list");
@@ -255,29 +250,6 @@ impl relm4::Component for Model {
 }
 
 impl Model {
-    /// Scrolls the list to make sure that the passed child is visible.
-    fn ensure_visible(&self, widget: &gtk::Button) {
-        let point = widget
-            .compute_point(&self.scrollwin, &Point::new(0.0, 0.0))
-            .unwrap();
-        let mut delta: f64 = 0.0;
-
-        let height = self.scrollwin.height() as f64;
-        let point_y = point.y() as f64;
-        if point_y < 0.0 {
-            delta = point_y - 20.0; // 20 margin
-        }
-        if point_y + 40.0 > height {
-            delta = point_y + 40.0 - height;
-        }
-        if delta != 0.0 {
-            let adj = self.scrollwin.vadjustment();
-            debug!("Correcting adjustment from {} by {}", adj.value(), delta);
-            adj.set_value(adj.value() + delta);
-            self.scrollwin.set_vadjustment(Some(&adj));
-        }
-    }
-
     fn list_title(&self) -> String {
         match self.init.source {
             SpotItem::SearchResults { ref st, ref query } => {
@@ -290,6 +262,12 @@ impl Model {
     pub fn current_item(&self) -> Option<SpotItem> {
         let item = self.dense_items.get(self.cursor.clone()?.current_index())?;
         Some(item.sb.model().get_content().clone())
+    }
+
+    pub fn current_widget(&self) -> Option<gtk::Widget> {
+        self.dense_items
+            .get(self.cursor.clone()?.current_index())
+            .map(|child| child.sb.widget().clone().into())
     }
 
     fn init_data_loading(spot: &SpotConn, source: &SpotItem, sender: &ComponentSender<Model>) {

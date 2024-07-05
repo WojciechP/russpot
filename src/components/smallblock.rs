@@ -77,7 +77,7 @@ impl Component for Model {
                     },
                     gtk::Label {
                         set_css_classes: &["user"],
-                        set_label: &model.init.artist(),
+                        set_label: &model.second_line(),
                         set_xalign: 0.0,
                     },
                 },
@@ -122,6 +122,16 @@ impl Component for Model {
                 let pixbuf = Pixbuf::from_stream(&stream, gtk::gio::Cancellable::NONE).unwrap();
                 self.pixbuf = Some(pixbuf);
             }
+        }
+    }
+}
+
+impl Model {
+    fn second_line(&self) -> String {
+        match &self.init {
+            SpotItem::Album(a) => format!("Album by {}", self.init.artist()),
+            SpotItem::Playlist(p) => format!("Playlist by {}", self.init.artist()),
+            other => other.artist(),
         }
     }
 }
