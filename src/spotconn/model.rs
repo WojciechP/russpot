@@ -1,5 +1,5 @@
 use rspotify::model::{
-    FullAlbum, FullTrack, PlayContextId, SearchType, SimplifiedAlbum, SimplifiedPlaylist,
+    FullTrack, PlayContextId, SearchType, SimplifiedAlbum, SimplifiedPlaylist,
 };
 use rspotify::prelude::*;
 

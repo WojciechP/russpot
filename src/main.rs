@@ -11,10 +11,12 @@ use relm4::{gtk, ComponentParts, ComponentSender, RelmApp};
 use crate::actionbuilder::{AccelManager, ActionBuilder};
 use crate::components::actions::{Actions, ActionsOutput};
 use crate::components::switchview;
+use crate::navigation::NavCommand;
 use crate::spotconn::SpotConn;
 
 mod actionbuilder;
 mod components;
+pub(crate) mod navigation;
 mod spotconn;
 
 struct AppModel {
@@ -107,44 +109,14 @@ impl relm4::SimpleComponent for AppModel {
 
         let mut am = AccelManager::new(&window, "global-navigation");
         let svs = &model.switchview.sender().clone();
-        am.register_emit(
-            "down",
-            &["J"],
-            svs,
-            switchview::In::CursorMove(1),
-        );
-        am.register_emit(
-            "up",
-            &["K"],
-            svs,
-            switchview::In::CursorMove(-1),
-        );
-        am.register_emit(
-            "left",
-            &["H"],
-            svs,
-            switchview::In::CursorMove(0),
-        ); // TODO: implement left/right
-        am.register_emit(
-            "right",
-            &["L"],
-            svs,
-            switchview::In::CursorMove(0),
-        ); // TODO: implement left/right
-        am.register_emit(
-            "descend",
-            &["O"],
-            svs,
-            switchview::In::NavDescend,
-        ); // O for Open
+        am.register_emit("down", &["J"], svs, switchview::In::Nav(NavCommand::Down));
+        am.register_emit("up", &["K"], svs, switchview::In::Nav(NavCommand::Up));
+        am.register_emit("left", &["H"], svs, switchview::In::Nav(NavCommand::Left));
+        am.register_emit("right", &["L"], svs, switchview::In::Nav(NavCommand::Right));
+        am.register_emit("descend", &["O"], svs, switchview::In::NavDescend); // O for Open
         am.register_emit("back", &["I"], svs, switchview::In::NavBack); // I because it's on the left side of O
 
-        am.register_emit(
-            "reset-search",
-            &["1"],
-            svs,
-            switchview::In::NavResetSearch,
-        );
+        am.register_emit("reset-search", &["1"], svs, switchview::In::NavResetSearch);
         am.register_emit(
             "reset-playlists",
             &["2"],

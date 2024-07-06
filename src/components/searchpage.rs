@@ -1,11 +1,12 @@
 use gtk::prelude::*;
 
-use log::debug;
+
 use relm4::prelude::*;
 use rspotify::model::SearchType;
 
 use crate::{
     components::denselist,
+    navigation::{NavCommand, NavOutput},
     spotconn::{model::SpotItem, SpotConn},
 };
 
@@ -24,13 +25,12 @@ pub enum In {
     FocusSearchbox,
     #[doc(hidden)]
     ExecuteSearch, // run the search for current query
-    CursorMoveDown,
-    CursorMoveUp,
+    Nav(NavCommand),
 }
 
 #[derive(Debug)]
 pub enum Out {
-    CursorIsNowAt(SpotItem),
+    Nav(NavOutput),
 }
 
 #[relm4::component(pub)]
@@ -76,11 +76,12 @@ impl Component for Model {
                 source: SpotItem::UserPlaylists, // TODO: bad: should be empty, then change to search results
             })
             .forward(sender.output_sender(), |msg| match msg {
-                denselist::Out::CursorEscapedDown => {
-                    todo!("implement cursor moves across sections")
+                denselist::Out::Nav(NavOutput::CursorIsNowAt(item)) => {
+                    Out::Nav(NavOutput::CursorIsNowAt(item))
                 }
-                denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
-                denselist::Out::CursorIsNowAt(item) => Out::CursorIsNowAt(item),
+                denselist::Out::Nav(_) => {
+                    todo!("implement cursor moves across sections");
+                }
             });
         let albums = denselist::Model::builder()
             .launch(denselist::Init {
@@ -88,11 +89,12 @@ impl Component for Model {
                 source: SpotItem::UserPlaylists, // TODO: bad: should be empty, then change to search results
             })
             .forward(sender.output_sender(), |msg| match msg {
-                denselist::Out::CursorEscapedDown => {
-                    todo!("implement cursor moves across sections")
+                denselist::Out::Nav(NavOutput::CursorIsNowAt(item)) => {
+                    Out::Nav(NavOutput::CursorIsNowAt(item))
                 }
-                denselist::Out::CursorEscapedUp => todo!("implement cursor moves across sections"),
-                denselist::Out::CursorIsNowAt(item) => Out::CursorIsNowAt(item),
+                denselist::Out::Nav(_) => {
+                    todo!("implement cursor moves across sections");
+                }
             });
 
         let widgets = view_output!();
@@ -129,8 +131,8 @@ impl Component for Model {
                     }));
                 self.btn_go.grab_focus();
             }
-            In::CursorMoveDown => self.albums.emit(denselist::In::CursorMove(1)),
-            In::CursorMoveUp => self.albums.emit(denselist::In::CursorMove(-1)),
+            // TODO: moves across multiple lists
+            In::Nav(nav_cmd) => self.albums.emit(denselist::In::Nav(nav_cmd)),
         }
     }
 }

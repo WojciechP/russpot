@@ -1,13 +1,16 @@
-use gtk::graphene::Point;
+
 use gtk::prelude::*;
 use log::{debug, error, warn};
 use relm4::factory::FactoryVecDeque;
 use relm4::prelude::*;
 use rspotify::{model::Offset, prelude::*};
 
-use crate::spotconn::{
-    model::{format_search_type, SpotItem},
-    SpotConn,
+use crate::{
+    navigation::{NavCommand, NavOutput},
+    spotconn::{
+        model::{format_search_type, SpotItem},
+        SpotConn,
+    },
 };
 
 use super::smallblock;
@@ -85,17 +88,14 @@ impl Model {
 
 #[derive(Debug)]
 pub enum In {
-    CursorMove(i32),
+    Nav(NavCommand),
     MoveCursorTo(DynamicIndex),
-    DestroyCursor,
     Reset(SpotItem),
 }
 
 #[derive(Debug)]
 pub enum Out {
-    CursorEscapedDown,
-    CursorEscapedUp,
-    CursorIsNowAt(SpotItem),
+    Nav(NavOutput),
 }
 
 #[derive(Debug)]
@@ -143,7 +143,7 @@ impl relm4::Component for Model {
                 ChildOut::Clicked(idx) => In::MoveCursorTo(idx),
             });
 
-        let mut model = Model {
+        let model = Model {
             init,
             dense_items,
             cursor: None,
@@ -159,7 +159,7 @@ impl relm4::Component for Model {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
         match msg {
-            In::DestroyCursor => {
+            In::Nav(NavCommand::ClearCursor) => {
                 let mut items = self.dense_items.guard();
                 if let Some(item) = self
                     .cursor
@@ -192,46 +192,18 @@ impl relm4::Component for Model {
                         move_focus_to = Some(item.sb.widget().clone());
                         sender
                             .output_sender()
-                            .emit(Out::CursorIsNowAt(item.sb.model().get_content().clone()));
+                            .emit(Out::Nav(NavOutput::CursorIsNowAt(
+                                item.sb.model().get_content().clone(),
+                            )));
                     }
                     None => error!("cannot set cursor, message back up?"),
                 }
             }
-            In::CursorMove(delta) => {
-                let next_id = match self.cursor.clone() {
-                    Some(cursor) => {
-                        // TODO: remove the next line, has_cursor=false is handled in MoveCursorTo
-                        self.dense_items
-                            .guard()
-                            .get_mut(cursor.current_index())
-                            .unwrap()
-                            .has_cursor = false;
-                        self.cursor = None;
-                        let idx = cursor.current_index() as i32;
-                        if idx + delta < 0 {
-                            warn!("cursor up out of the list");
-                            sender.output_sender().emit(Out::CursorEscapedUp);
-                            return;
-                        }
-                        if (idx + delta) as usize >= self.dense_items.len() {
-                            warn!("cursor down out of the list");
-                            sender.output_sender().emit(Out::CursorEscapedDown);
-                            return;
-                        }
-                        (idx + delta) as usize
-                    }
-                    None if delta > 0 => 0,
-                    None => self.dense_items.len() - 1,
-                };
-                match self.dense_items.get(next_id) {
-                    Some(next) => sender
-                        .input_sender()
-                        .emit(In::MoveCursorTo(next.self_idx.clone())),
-                    None => {
-                        error!("should never happen: next_id is within range, yet no child.")
-                    }
-                }
-            }
+            // TODO: distinguish between directions
+            In::Nav(NavCommand::Up) => self.move_cursor(-1, &sender),
+            In::Nav(NavCommand::Left) => self.move_cursor(-1, &sender),
+            In::Nav(NavCommand::Down) => self.move_cursor(1, &sender),
+            In::Nav(NavCommand::Right) => self.move_cursor(1, &sender),
         }
     }
     fn update_cmd(
@@ -304,6 +276,44 @@ impl Model {
             SpotItem::SearchResults { st, query } => sender.command(move |out, shutdown| {
                 spot.search(st, query, move |item| out.emit(CmdOut::AddItem(item)))
             }),
+        }
+    }
+
+    fn move_cursor(&mut self, delta: i32, sender: &ComponentSender<Self>) {
+        let next_id = match self.cursor.clone() {
+            Some(cursor) => {
+                // TODO: remove the next line, has_cursor=false is handled in MoveCursorTo
+                self.dense_items
+                    .guard()
+                    .get_mut(cursor.current_index())
+                    .unwrap()
+                    .has_cursor = false;
+                self.cursor = None;
+                let idx = cursor.current_index() as i32;
+                if idx + delta < 0 {
+                    warn!("cursor up out of the list");
+                    sender.output_sender().emit(Out::Nav(NavOutput::EscapedUp));
+                    return;
+                }
+                if (idx + delta) as usize >= self.dense_items.len() {
+                    warn!("cursor down out of the list");
+                    sender
+                        .output_sender()
+                        .emit(Out::Nav(NavOutput::EscapedDown));
+                    return;
+                }
+                (idx + delta) as usize
+            }
+            None if delta > 0 => 0,
+            None => self.dense_items.len() - 1,
+        };
+        match self.dense_items.get(next_id) {
+            Some(next) => sender
+                .input_sender()
+                .emit(In::MoveCursorTo(next.self_idx.clone())),
+            None => {
+                error!("should never happen: next_id is within range, yet no child.")
+            }
         }
     }
 }

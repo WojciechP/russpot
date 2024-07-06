@@ -7,6 +7,8 @@ use relm4::{factory::FactoryVecDeque, prelude::*};
 
 use super::denselist;
 use super::searchpage;
+use crate::navigation::NavCommand;
+use crate::navigation::NavOutput;
 use crate::spotconn::{model::SpotItem, SpotConn};
 
 pub struct Model {
@@ -21,10 +23,9 @@ pub struct Init {}
 
 #[derive(Debug, Clone, Copy)]
 pub enum In {
+    Nav(NavCommand),
     #[doc(hidden)]
     EnsureCurrentVisible,
-    /// Move cursor down (+1) or up (-1).
-    CursorMove(i32),
     /// Descend into selected playlist or album.
     NavDescend,
     /// Move back up to the previews view.
@@ -75,7 +76,7 @@ impl relm4::Component for Model {
         let views = FactoryVecDeque::<Child>::builder()
             .launch(gtk::Stack::new())
             .forward(sender.input_sender(), move |out| match out {
-                ChildOut::CursorIsNowAt(_) => In::EnsureCurrentVisible,
+                ChildOut::Nav(_) => In::EnsureCurrentVisible,
             });
         let mut model = Model {
             spot: SpotConn::new(), //TODO: accept from parent
@@ -96,13 +97,12 @@ impl relm4::Component for Model {
             In::EnsureCurrentVisible => {
                 self.ensure_current_visible();
             }
-            In::CursorMove(delta) => {
+            In::Nav(nav_cmd) => {
                 self.views
                     .guard()
                     .back()
                     .expect("page stack cannot be empty")
-                    .denselist
-                    .cursor_move(delta);
+                    .emit_nav(nav_cmd);
                 // Scroll the view so that the newly selected item is still visible.
                 // We're using a message here, instead of direct function call,
                 // so that the cursor has time to move before the calculation happens.
@@ -208,19 +208,6 @@ impl ChildContent {
             ChildContent::SearchPage(sp) => sp.model().descend(),
         }
     }
-
-    fn cursor_move(&self, delta: i32) {
-        match self {
-            ChildContent::DenseList(dl) => dl.emit(denselist::In::CursorMove(delta)),
-            ChildContent::SearchPage(sp) => {
-                if delta > 0 {
-                    sp.emit(searchpage::In::CursorMoveDown)
-                } else {
-                    sp.emit(searchpage::In::CursorMoveUp)
-                }
-            }
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -243,13 +230,18 @@ pub struct ChildInit {
 
 #[derive(Debug)]
 pub enum ChildIn {
-    MoveCursorDown,
-    MoveCursorUp,
+    Nav(NavCommand),
+}
+
+impl From<NavCommand> for ChildIn {
+    fn from(nc: NavCommand) -> Self {
+        ChildIn::Nav(nc)
+    }
 }
 
 #[derive(Debug)]
 pub enum ChildOut {
-    CursorIsNowAt(SpotItem),
+    Nav(NavOutput),
 }
 
 #[relm4::factory(pub)]
@@ -284,15 +276,23 @@ impl FactoryComponent for Child {
                     .connect_receiver(move |child_sender, msg| match msg {
                         // When the cursor tries to escape from a single dense list,
                         // we just send it straight back to keep it within bounds.
-                        denselist::Out::CursorEscapedUp => {
-                            sender.input_sender().emit(ChildIn::MoveCursorDown)
-                        }
-                        denselist::Out::CursorEscapedDown => {
-                            sender.input_sender().emit(ChildIn::MoveCursorUp)
-                        }
-                        denselist::Out::CursorIsNowAt(item) => {
-                            sender.output_sender().emit(ChildOut::CursorIsNowAt(item))
-                        }
+                        denselist::Out::Nav(nav_out) => match nav_out {
+                            NavOutput::EscapedUp => {
+                                sender.input_sender().emit(NavCommand::Down.into())
+                            }
+                            NavOutput::EscapedDown => {
+                                sender.input_sender().emit(NavCommand::Up.into())
+                            }
+                            NavOutput::EscapedLeft => {
+                                sender.input_sender().emit(NavCommand::Right.into())
+                            }
+                            NavOutput::EscapedRight => {
+                                sender.input_sender().emit(NavCommand::Left.into())
+                            }
+                            NavOutput::CursorIsNowAt(_) => {
+                                sender.output_sender().emit(ChildOut::Nav(nav_out))
+                            }
+                        },
                     });
                 Child {
                     init,
@@ -303,7 +303,7 @@ impl FactoryComponent for Child {
                 let sp = searchpage::Model::builder()
                     .launch(init.spot.clone())
                     .forward(sender.output_sender(), |msg| match msg {
-                        searchpage::Out::CursorIsNowAt(item) => ChildOut::CursorIsNowAt(item),
+                        searchpage::Out::Nav(nav_out) => ChildOut::Nav(nav_out),
                     });
                 Child {
                     init,
@@ -315,13 +315,19 @@ impl FactoryComponent for Child {
 
     fn update(&mut self, message: Self::Input, sender: FactorySender<Self>) {
         match message {
-            ChildIn::MoveCursorDown => self.denselist.cursor_move(1),
-            ChildIn::MoveCursorUp => self.denselist.cursor_move(-1),
+            ChildIn::Nav(nav_cmd) => self.emit_nav(nav_cmd),
         }
     }
 }
 
 impl Child {
+    fn emit_nav(&self, nav_cmd: NavCommand) {
+        match &self.denselist {
+            ChildContent::DenseList(dl) => dl.emit(denselist::In::Nav(nav_cmd)),
+            ChildContent::SearchPage(sp) => sp.emit(searchpage::In::Nav(nav_cmd)),
+        }
+    }
+
     fn child_widget(&self) -> gtk::Widget {
         match &self.denselist {
             ChildContent::DenseList(dl) => dl.widget().clone().into(),
