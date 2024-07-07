@@ -76,7 +76,15 @@ impl relm4::Component for Model {
         let views = FactoryVecDeque::<Child>::builder()
             .launch(gtk::Stack::new())
             .forward(sender.input_sender(), move |out| match out {
-                ChildOut::Nav(_) => In::EnsureCurrentVisible,
+                ChildOut::Nav(NavOutput::CursorIsNowAt(_)) => In::EnsureCurrentVisible,
+                // When the cursor attemts to leave a child view, bounce it back:
+                ChildOut::Nav(nav_out) => In::Nav(match nav_out {
+                    NavOutput::EscapedUp => NavCommand::Down,
+                    NavOutput::EscapedDown => NavCommand::Up,
+                    NavOutput::EscapedLeft => NavCommand::Right,
+                    NavOutput::EscapedRight => NavCommand::Left,
+                    NavOutput::CursorIsNowAt(_) => unreachable!("NowOutput::CursorIsNowAt is handled in the parent match-case statement already"),
+                }),
             });
         let mut model = Model {
             spot: SpotConn::new(), //TODO: accept from parent
@@ -273,26 +281,8 @@ impl FactoryComponent for Child {
                         spot: init.spot.clone(),
                         source: source.clone(),
                     })
-                    .connect_receiver(move |child_sender, msg| match msg {
-                        // When the cursor tries to escape from a single dense list,
-                        // we just send it straight back to keep it within bounds.
-                        denselist::Out::Nav(nav_out) => match nav_out {
-                            NavOutput::EscapedUp => {
-                                sender.input_sender().emit(NavCommand::Down.into())
-                            }
-                            NavOutput::EscapedDown => {
-                                sender.input_sender().emit(NavCommand::Up.into())
-                            }
-                            NavOutput::EscapedLeft => {
-                                sender.input_sender().emit(NavCommand::Right.into())
-                            }
-                            NavOutput::EscapedRight => {
-                                sender.input_sender().emit(NavCommand::Left.into())
-                            }
-                            NavOutput::CursorIsNowAt(_) => {
-                                sender.output_sender().emit(ChildOut::Nav(nav_out))
-                            }
-                        },
+                    .forward(sender.output_sender(), |msg| match msg {
+                        denselist::Out::Nav(nav_out) => ChildOut::Nav(nav_out),
                     });
                 Child {
                     init,

@@ -1,4 +1,3 @@
-
 use gtk::prelude::*;
 use log::{debug, error, warn};
 use relm4::factory::FactoryVecDeque;
@@ -112,8 +111,7 @@ impl relm4::Component for Model {
 
     view! {
         #[root]
-        gtk::Box {
-            set_orientation: gtk::Orientation::Horizontal,
+        gtk::Box::new(gtk::Orientation::Vertical, 0) {
             set_hexpand: true,
             set_vexpand: true,
 

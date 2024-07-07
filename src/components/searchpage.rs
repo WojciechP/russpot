@@ -1,11 +1,10 @@
 use gtk::prelude::*;
 
-
 use relm4::prelude::*;
 use rspotify::model::SearchType;
 
 use crate::{
-    components::denselist,
+    components::{denselist, denselist_factory, multiview},
     navigation::{NavCommand, NavOutput},
     spotconn::{model::SpotItem, SpotConn},
 };
@@ -16,8 +15,7 @@ pub struct Model {
     searchbox: gtk::Entry,
     btn_go: gtk::Button,
 
-    albums: Controller<denselist::Model>,
-    tracks: Controller<denselist::Model>,
+    multiview: Controller<multiview::Model>,
 }
 
 #[derive(Debug)]
@@ -59,8 +57,7 @@ impl Component for Model {
                 },
             },
 
-            albums.widget(),
-            tracks.widget(),
+            multiview.widget(),
         },
 
     }
@@ -70,31 +67,23 @@ impl Component for Model {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let tracks = denselist::Model::builder()
-            .launch(denselist::Init {
+        let multiview = multiview::Model::builder()
+            .launch(multiview::Init {
                 spot: init.clone(),
-                source: SpotItem::UserPlaylists, // TODO: bad: should be empty, then change to search results
+                // TODO: Update the sources after search is executed. Start with empty.
+                sections: vec![
+                    denselist_factory::Init {
+                        spot: init.clone(),
+                        source: SpotItem::UserPlaylists,
+                    },
+                    denselist_factory::Init {
+                        spot: init.clone(),
+                        source: SpotItem::UserPlaylists,
+                    },
+                ],
             })
             .forward(sender.output_sender(), |msg| match msg {
-                denselist::Out::Nav(NavOutput::CursorIsNowAt(item)) => {
-                    Out::Nav(NavOutput::CursorIsNowAt(item))
-                }
-                denselist::Out::Nav(_) => {
-                    todo!("implement cursor moves across sections");
-                }
-            });
-        let albums = denselist::Model::builder()
-            .launch(denselist::Init {
-                spot: init.clone(),
-                source: SpotItem::UserPlaylists, // TODO: bad: should be empty, then change to search results
-            })
-            .forward(sender.output_sender(), |msg| match msg {
-                denselist::Out::Nav(NavOutput::CursorIsNowAt(item)) => {
-                    Out::Nav(NavOutput::CursorIsNowAt(item))
-                }
-                denselist::Out::Nav(_) => {
-                    todo!("implement cursor moves across sections");
-                }
+                multiview::Out::Nav(nav_out) => Out::Nav(nav_out),
             });
 
         let widgets = view_output!();
@@ -102,8 +91,7 @@ impl Component for Model {
             spot: init,
             searchbox: widgets.searchbox.clone(),
             btn_go: widgets.btn_go.clone(),
-            albums,
-            tracks,
+            multiview,
         };
         sender.input_sender().emit(In::FocusSearchbox);
 
@@ -119,29 +107,39 @@ impl Component for Model {
                 let spot = self.spot.clone();
                 let query = self.searchbox.text().to_string();
 
-                self.tracks
-                    .emit(denselist::In::Reset(SpotItem::SearchResults {
-                        st: SearchType::Track,
-                        query: query.clone(),
-                    }));
-                self.albums
-                    .emit(denselist::In::Reset(SpotItem::SearchResults {
-                        st: SearchType::Album,
-                        query,
-                    }));
+                let sections = vec![
+                    denselist_factory::Init {
+                        spot: self.spot.clone(),
+                        source: SpotItem::SearchResults {
+                            st: SearchType::Album,
+                            query: query.clone(),
+                        },
+                    },
+                    denselist_factory::Init {
+                        spot: self.spot.clone(),
+                        source: SpotItem::SearchResults {
+                            st: SearchType::Track,
+                            query: query.clone(),
+                        },
+                    },
+                ];
+                self.multiview.emit(multiview::In::ResetSections(sections));
                 self.btn_go.grab_focus();
             }
             // TODO: moves across multiple lists
-            In::Nav(nav_cmd) => self.albums.emit(denselist::In::Nav(nav_cmd)),
+            In::Nav(nav_cmd) => self.multiview.emit(multiview::In::Nav(nav_cmd)),
         }
     }
 }
 
 impl Model {
     pub fn descend(&self) -> Option<denselist::Init> {
+        /* TODO: implement descend
         self.albums
             .model()
             .descend()
             .or(self.tracks.model().descend())
+            */
+        None
     }
 }
