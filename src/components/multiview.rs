@@ -7,22 +7,22 @@ use log::{debug, warn};
 use relm4::{factory::FactoryVecDeque, prelude::*};
 use rspotify::model::{Offset, PlayContextId};
 
-use super::denselist_factory;
+use super::denselist;
 
 #[derive(Debug)]
 pub struct Model {
-    sections: FactoryVecDeque<denselist_factory::Model>,
+    sections: FactoryVecDeque<denselist::Model>,
     cur_section: usize,
 }
 
 pub struct Init {
-    pub sections: Vec<denselist_factory::Init>,
+    pub sections: Vec<denselist::Init>,
 }
 
 #[derive(Debug)]
 pub enum In {
     Nav(NavCommand),
-    ResetSections(Vec<denselist_factory::Init>),
+    ResetSections(Vec<denselist::Init>),
     NextSection,
     PrevSection,
     #[doc(hidden)]
@@ -60,12 +60,12 @@ impl SimpleComponent for Model {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let mut sections = FactoryVecDeque::<denselist_factory::Model>::builder()
+        let mut sections = FactoryVecDeque::<denselist::Model>::builder()
             .launch(gtk::Box::default())
             .forward(sender.input_sender(), |msg| {
                 debug!("mutliview child message: {:?}", msg);
                 match msg {
-                    denselist_factory::Out::Nav(nav_out) => match nav_out {
+                    denselist::Out::Nav(nav_out) => match nav_out {
                         NavOutput::EscapedUp => In::PrevSection,
                         NavOutput::EscapedLeft => In::PrevSection,
                         NavOutput::EscapedDown => In::NextSection,
@@ -94,7 +94,7 @@ impl SimpleComponent for Model {
         match message {
             In::Nav(nav_cmd) => self
                 .sections
-                .send(self.cur_section, denselist_factory::In::Nav(nav_cmd)),
+                .send(self.cur_section, denselist::In::Nav(nav_cmd)),
             In::ResetSections(sections) => {
                 self.sections.guard().clear();
                 for s in sections {
@@ -119,12 +119,12 @@ impl Model {
 
         self.sections.send(
             self.cur_section,
-            denselist_factory::In::Nav(NavCommand::ClearCursor),
+            denselist::In::Nav(NavCommand::ClearCursor),
         );
         self.cur_section = next as usize;
         self.sections.send(
             self.cur_section,
-            denselist_factory::In::Nav(if delta > 0 {
+            denselist::In::Nav(if delta > 0 {
                 NavCommand::Down
             } else {
                 NavCommand::Up
@@ -132,7 +132,7 @@ impl Model {
         );
     }
 
-    pub fn descend(&self) -> Option<denselist_factory::Init> {
+    pub fn descend(&self) -> Option<denselist::Init> {
         self.sections
             .get(self.cur_section)
             .and_then(|dl| dl.descend())

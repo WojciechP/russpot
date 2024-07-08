@@ -4,7 +4,7 @@ use relm4::prelude::*;
 use rspotify::model::{Offset, PlayContextId, SearchType};
 
 use crate::{
-    components::{denselist, denselist_factory, multiview},
+    components::{denselist, multiview},
     navigation::{NavCommand, NavOutput},
     spotconn::model::SpotItem,
 };
@@ -92,13 +92,13 @@ impl Component for Model {
                 let query = self.searchbox.text().to_string();
 
                 let sections = vec![
-                    denselist_factory::Init {
+                    denselist::Init {
                         source: SpotItem::SearchResults {
                             st: SearchType::Album,
                             query: query.clone(),
                         },
                     },
-                    denselist_factory::Init {
+                    denselist::Init {
                         source: SpotItem::SearchResults {
                             st: SearchType::Track,
                             query: query.clone(),
@@ -115,7 +115,7 @@ impl Component for Model {
 }
 
 impl Model {
-    pub fn descend(&self) -> Option<denselist_factory::Init> {
+    pub fn descend(&self) -> Option<denselist::Init> {
         self.multiview.model().descend()
     }
 

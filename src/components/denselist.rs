@@ -100,37 +100,37 @@ pub enum CmdOut {
     AddItem(SpotItem),
 }
 
-#[relm4::component(pub)]
-impl relm4::Component for Model {
+#[relm4::factory(pub)]
+impl FactoryComponent for Model {
     type Init = Init;
     type Input = In;
     type Output = Out;
     type CommandOutput = CmdOut;
+    type ParentWidget = gtk::Box;
 
     view! {
         #[root]
-        gtk::Box::new(gtk::Orientation::Vertical, 0) {
+        gtk::Box {
+            set_orientation: gtk::Orientation::Vertical,
             set_hexpand: true,
             set_vexpand: true,
 
             gtk::Label {
-                set_label: &model.list_title(),
+                set_label: &self.list_title(),
             },
 
-            #[local_ref]
-            dense_list -> gtk::Box {
+            self.dense_items.widget() -> &gtk::Box {
                 set_hexpand: true,
                 set_orientation: gtk::Orientation::Vertical,
             }
         }
     }
 
-    fn init(
+    fn init_model(
         init: Self::Init,
-        root: Self::Root,
-        sender: relm4::ComponentSender<Self>,
-    ) -> relm4::ComponentParts<Self> {
-        // Old-style PlaylistItem children:
+        index: &Self::Index,
+        sender: relm4::FactorySender<Self>,
+    ) -> Model {
         // New-style DenseItem children
         let dense_items = FactoryVecDeque::<ChildItem>::builder()
             .launch(gtk::Box::default())
@@ -144,16 +144,13 @@ impl relm4::Component for Model {
             dense_items,
             cursor: None,
         };
-        let dense_list = model.dense_items.widget();
-
-        let widgets = view_output!();
 
         Model::init_data_loading(&model.init.source, &sender);
 
-        relm4::ComponentParts { model, widgets }
+        model
     }
 
-    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>, _root: &Self::Root) {
+    fn update(&mut self, msg: Self::Input, sender: FactorySender<Self>) {
         match msg {
             In::Nav(NavCommand::ClearCursor) => {
                 let mut items = self.dense_items.guard();
@@ -202,12 +199,7 @@ impl relm4::Component for Model {
             In::Nav(NavCommand::Right) => self.move_cursor(1, &sender),
         }
     }
-    fn update_cmd(
-        &mut self,
-        message: Self::CommandOutput,
-        sender: ComponentSender<Self>,
-        root: &Self::Root,
-    ) {
+    fn update_cmd(&mut self, message: Self::CommandOutput, sender: FactorySender<Self>) {
         match message {
             CmdOut::AddItem(item) => {
                 self.dense_items.guard().push_back(item);
@@ -237,7 +229,7 @@ impl Model {
             .map(|child| child.sb.widget().clone().into())
     }
 
-    fn init_data_loading(source: &SpotItem, sender: &ComponentSender<Model>) {
+    fn init_data_loading(source: &SpotItem, sender: &FactorySender<Model>) {
         debug!("Initializing data load for source {:?}", source);
         match source.clone() {
             SpotItem::UserPlaylists => sender.command(move |out, shutdown| {
@@ -273,7 +265,7 @@ impl Model {
         }
     }
 
-    fn move_cursor(&mut self, delta: i32, sender: &ComponentSender<Self>) {
+    fn move_cursor(&mut self, delta: i32, sender: &FactorySender<Self>) {
         let next_id = match self.cursor.clone() {
             Some(cursor) => {
                 // TODO: remove the next line, has_cursor=false is handled in MoveCursorTo

@@ -7,7 +7,7 @@ use relm4::{factory::FactoryVecDeque, prelude::*};
 use rspotify::model::Offset;
 use rspotify::model::PlayContextId;
 
-use super::denselist_factory as denselist;
+use super::denselist;
 use super::multiview;
 use super::searchpage;
 use crate::navigation::NavCommand;
