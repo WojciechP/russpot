@@ -132,22 +132,17 @@ impl relm4::SimpleComponent for AppModel {
     fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
         match message {
             AppInput::PlayNow => {
-                if let Some((ctx, offset)) = self
-                    .switchview
-                    .model()
-                    .current_list()
-                    .and_then(|dl| dl.model().play_context())
-                {
+                if let Some((ctx, offset)) = self.switchview.model().play_context() {
                     debug!("play now -> ctx is some");
                     _sender.oneshot_command(async move {
-                        SpotConn::get().play_context(ctx, offset).await;
+                        SpotConn::global().play_context(ctx, offset).await;
                     })
                 } else {
                     debug!("playnow -> no ctx");
                 }
             }
             AppInput::SpircNow => _sender.oneshot_command(async move {
-                SpotConn::get().play_on_spirc().await;
+                SpotConn::global().play_on_spirc().await;
             }),
         }
     }

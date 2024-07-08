@@ -100,7 +100,7 @@ impl SpotConn {
     /// Returns the global singleton instance of SpotConn.
     /// Note that the underlying connection may not exist yet,
     /// and will be established lazily on any method call.
-    pub fn get() -> &'static SpotConn {
+    pub fn global() -> &'static SpotConn {
         static SPOT_CONN: OnceLock<SpotConn> = OnceLock::new();
         SPOT_CONN.get_or_init(SpotConn::new)
     }

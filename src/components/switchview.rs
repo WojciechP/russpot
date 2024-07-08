@@ -4,12 +4,15 @@
 use gtk::prelude::*;
 use log::debug;
 use relm4::{factory::FactoryVecDeque, prelude::*};
+use rspotify::model::Offset;
+use rspotify::model::PlayContextId;
 
-use super::denselist;
+use super::denselist_factory as denselist;
+use super::multiview;
 use super::searchpage;
 use crate::navigation::NavCommand;
 use crate::navigation::NavOutput;
-use crate::spotconn::{model::SpotItem, SpotConn};
+use crate::spotconn::model::SpotItem;
 
 pub struct Model {
     views: FactoryVecDeque<Child>,
@@ -162,18 +165,11 @@ impl Model {
         self.gtk_stack.last_child().unwrap()
     }
 
-    pub fn current_list(&self) -> Option<&Controller<denselist::Model>> {
-        self.views.back().and_then(|item| match &item.child {
-            ChildContent::DenseList(ctrl) => Some(ctrl),
-            _ => None,
-        })
-    }
-
     /// Scrolls the list to make sure that the passed child is visible.
     /// Returns the delta in pixels.
     /// Returns None if no scrollng was performed.
     fn ensure_current_visible(&self) -> Option<f64> {
-        let widget = self.current_list()?.model().current_widget()?;
+        let widget = self.views.back()?.child_widget();
 
         let point = widget.compute_point(&self.scrollwin, &gtk::graphene::Point::new(0.0, 0.0))?;
         let mut delta: f64 = 0.0;
@@ -196,19 +192,30 @@ impl Model {
             None
         }
     }
+
+    pub fn play_context(&self) -> Option<(PlayContextId<'static>, Option<Offset>)> {
+        self.views.back()?.child.play_context()
+    }
 }
 
 #[derive(Debug)]
 pub enum ChildContent {
-    DenseList(Controller<denselist::Model>),
+    MultiView(Controller<multiview::Model>),
     SearchPage(Controller<searchpage::Model>),
 }
 
 impl ChildContent {
     fn descend(&self) -> Option<denselist::Init> {
         match self {
-            ChildContent::DenseList(dl) => dl.model().descend(),
+            ChildContent::MultiView(mv) => mv.model().descend(),
             ChildContent::SearchPage(sp) => sp.model().descend(),
+        }
+    }
+
+    pub fn play_context(&self) -> Option<(PlayContextId<'static>, Option<Offset>)> {
+        match self {
+            ChildContent::MultiView(mv) => mv.model().play_context(),
+            ChildContent::SearchPage(sp) => sp.model().play_context(),
         }
     }
 }
@@ -270,16 +277,18 @@ impl FactoryComponent for Child {
     fn init_model(init: Self::Init, index: &Self::Index, sender: FactorySender<Self>) -> Self {
         match init.layout {
             ChildLayout::SingleDenseList(ref source) => {
-                let denselist = denselist::Model::builder()
-                    .launch(denselist::Init {
-                        source: source.clone(),
+                let mv = multiview::Model::builder()
+                    .launch(multiview::Init {
+                        sections: vec![denselist::Init {
+                            source: source.clone(),
+                        }],
                     })
                     .forward(sender.output_sender(), |msg| match msg {
-                        denselist::Out::Nav(nav_out) => ChildOut::Nav(nav_out),
+                        multiview::Out::Nav(nav_out) => ChildOut::Nav(nav_out),
                     });
                 Child {
                     init,
-                    child: ChildContent::DenseList(denselist),
+                    child: ChildContent::MultiView(mv),
                 }
             }
             ChildLayout::SearchPage => {
@@ -307,14 +316,14 @@ impl FactoryComponent for Child {
 impl Child {
     fn emit_nav(&self, nav_cmd: NavCommand) {
         match &self.child {
-            ChildContent::DenseList(dl) => dl.emit(denselist::In::Nav(nav_cmd)),
+            ChildContent::MultiView(mv) => mv.emit(multiview::In::Nav(nav_cmd)),
             ChildContent::SearchPage(sp) => sp.emit(searchpage::In::Nav(nav_cmd)),
         }
     }
 
     fn child_widget(&self) -> gtk::Widget {
         match &self.child {
-            ChildContent::DenseList(dl) => dl.widget().clone().into(),
+            ChildContent::MultiView(mv) => mv.widget().clone().into(),
             ChildContent::SearchPage(sp) => sp.widget().clone().into(),
         }
     }

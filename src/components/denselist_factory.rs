@@ -233,13 +233,13 @@ impl Model {
         debug!("Initializing data load for source {:?}", source);
         match source.clone() {
             SpotItem::UserPlaylists => sender.command(move |out, shutdown| {
-                SpotConn::get().current_user_playlists_until_shutdown(shutdown, move |sp| {
+                SpotConn::global().current_user_playlists_until_shutdown(shutdown, move |sp| {
                     out.emit(CmdOut::AddItem(SpotItem::Playlist(sp)))
                 })
             }),
 
             SpotItem::Playlist(sp) => sender.command(move |out, shutdown| {
-                SpotConn::get().tracks_in_playlist(shutdown, sp.id.uri(), move |ft| {
+                SpotConn::global().tracks_in_playlist(shutdown, sp.id.uri(), move |ft| {
                     out.emit(CmdOut::AddItem(SpotItem::Track(ft)))
                 })
             }),
@@ -248,7 +248,7 @@ impl Model {
             }
             SpotItem::Album(a) => match source.uri() {
                 Some(uri) => sender.command(move |out, shutdown| {
-                    SpotConn::get().tracks_in_album(shutdown, uri, move |ft| {
+                    SpotConn::global().tracks_in_album(shutdown, uri, move |ft| {
                         out.emit(CmdOut::AddItem(SpotItem::Track(ft)))
                     })
                 }),
@@ -260,7 +260,7 @@ impl Model {
                 }
             },
             SpotItem::SearchResults { st, query } => sender.command(move |out, shutdown| {
-                SpotConn::get().search(st, query, move |item| out.emit(CmdOut::AddItem(item)))
+                SpotConn::global().search(st, query, move |item| out.emit(CmdOut::AddItem(item)))
             }),
         }
     }

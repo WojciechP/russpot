@@ -1,13 +1,11 @@
 //! Multiview displays multiple lists of items.
 //! For example, an Artist page is a multiview of albums, songs, and related artists.
 
-use crate::{
-    navigation::{NavCommand, NavOutput},
-    spotconn::SpotConn,
-};
+use crate::navigation::{NavCommand, NavOutput};
 use gtk::prelude::*;
 use log::{debug, warn};
 use relm4::{factory::FactoryVecDeque, prelude::*};
+use rspotify::model::{Offset, PlayContextId};
 
 use super::denselist_factory;
 
@@ -132,5 +130,17 @@ impl Model {
                 NavCommand::Up
             }),
         );
+    }
+
+    pub fn descend(&self) -> Option<denselist_factory::Init> {
+        self.sections
+            .get(self.cur_section)
+            .and_then(|dl| dl.descend())
+    }
+
+    pub fn play_context(&self) -> Option<(PlayContextId<'static>, Option<Offset>)> {
+        self.sections
+            .get(self.cur_section)
+            .and_then(|dl| dl.play_context())
     }
 }

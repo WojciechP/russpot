@@ -1,12 +1,12 @@
 use gtk::prelude::*;
 
 use relm4::prelude::*;
-use rspotify::model::SearchType;
+use rspotify::model::{Offset, PlayContextId, SearchType};
 
 use crate::{
     components::{denselist, denselist_factory, multiview},
     navigation::{NavCommand, NavOutput},
-    spotconn::{model::SpotItem, SpotConn},
+    spotconn::model::SpotItem,
 };
 
 #[derive(Debug)]
@@ -115,13 +115,11 @@ impl Component for Model {
 }
 
 impl Model {
-    pub fn descend(&self) -> Option<denselist::Init> {
-        /* TODO: implement descend
-        self.albums
-            .model()
-            .descend()
-            .or(self.tracks.model().descend())
-            */
-        None
+    pub fn descend(&self) -> Option<denselist_factory::Init> {
+        self.multiview.model().descend()
+    }
+
+    pub fn play_context(&self) -> Option<(PlayContextId<'static>, Option<Offset>)> {
+        self.multiview.model().play_context()
     }
 }
