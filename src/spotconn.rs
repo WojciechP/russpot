@@ -8,7 +8,7 @@ use futures::TryStreamExt;
 use log::{debug, error};
 use std::collections::HashSet;
 
-use std::sync::RwLock;
+use std::sync::{OnceLock, RwLock};
 use std::time::SystemTime;
 use std::{env, sync::Arc};
 
@@ -97,7 +97,15 @@ pub struct SpotConn {
 }
 
 impl SpotConn {
-    pub fn new() -> Self {
+    /// Returns the global singleton instance of SpotConn.
+    /// Note that the underlying connection may not exist yet,
+    /// and will be established lazily on any method call.
+    pub fn get() -> &'static SpotConn {
+        static SPOT_CONN: OnceLock<SpotConn> = OnceLock::new();
+        SPOT_CONN.get_or_init(SpotConn::new)
+    }
+
+    fn new() -> Self {
         let web_config = Config {
             token_refreshing: false,
             ..Default::default()
@@ -169,7 +177,7 @@ impl SpotConn {
     }
 
     pub async fn current_user_playlists_until_shutdown<F>(
-        self,
+        &self,
         shutdown: relm4::ShutdownReceiver,
         f: F,
     ) where
@@ -181,7 +189,7 @@ impl SpotConn {
             .await
     }
 
-    pub async fn tracks_in_playlist<F>(self, shutdown: relm4::ShutdownReceiver, uri: String, f: F)
+    pub async fn tracks_in_playlist<F>(&self, shutdown: relm4::ShutdownReceiver, uri: String, f: F)
     where
         F: Fn(FullTrack),
     {
@@ -206,7 +214,7 @@ impl SpotConn {
             .await
     }
 
-    pub async fn tracks_in_album<F>(self, shutdown: relm4::ShutdownReceiver, uri: String, f: F)
+    pub async fn tracks_in_album<F>(&self, shutdown: relm4::ShutdownReceiver, uri: String, f: F)
     where
         F: Fn(FullTrack),
     {
@@ -238,7 +246,7 @@ impl SpotConn {
             .await
     }
 
-    pub async fn search<F>(self, st: SearchType, query: String, f: F)
+    pub async fn search<F>(&self, st: SearchType, query: String, f: F)
     where
         F: Fn(SpotItem),
     {

@@ -12,7 +12,6 @@ use crate::navigation::NavOutput;
 use crate::spotconn::{model::SpotItem, SpotConn};
 
 pub struct Model {
-    spot: SpotConn,
     views: FactoryVecDeque<Child>,
     gtk_stack: gtk::Stack,
     scrollwin: gtk::ScrolledWindow,
@@ -87,7 +86,6 @@ impl relm4::Component for Model {
                 }),
             });
         let mut model = Model {
-            spot: SpotConn::new(), //TODO: accept from parent
             views,
             gtk_stack: gtk::Stack::default(),
             scrollwin: gtk::ScrolledWindow::new(),
@@ -120,12 +118,11 @@ impl relm4::Component for Model {
                 let mut pages = self.views.guard();
                 let maybe_dli = {
                     let last_page = pages.back().expect("page stack cannot be empty");
-                    last_page.denselist.descend()
+                    last_page.child.descend()
                 };
                 if let Some(dli) = maybe_dli {
                     debug!("descending into {:?}", dli);
                     pages.push_back(ChildInit {
-                        spot: dli.spot.clone(),
                         layout: ChildLayout::SingleDenseList(dli.source),
                     });
                 } else {
@@ -145,7 +142,6 @@ impl relm4::Component for Model {
                 pages.clear();
                 debug!("NavResetPlaylists");
                 pages.push_back(ChildInit {
-                    spot: self.spot.clone(),
                     layout: ChildLayout::SingleDenseList(SpotItem::UserPlaylists),
                 });
             }
@@ -154,7 +150,6 @@ impl relm4::Component for Model {
                 pages.clear();
                 debug!("NavResetSearch");
                 pages.push_back(ChildInit {
-                    spot: self.spot.clone(),
                     layout: ChildLayout::SearchPage,
                 });
             }
@@ -168,7 +163,7 @@ impl Model {
     }
 
     pub fn current_list(&self) -> Option<&Controller<denselist::Model>> {
-        self.views.back().and_then(|item| match &item.denselist {
+        self.views.back().and_then(|item| match &item.child {
             ChildContent::DenseList(ctrl) => Some(ctrl),
             _ => None,
         })
@@ -221,7 +216,7 @@ impl ChildContent {
 #[derive(Debug)]
 pub struct Child {
     init: ChildInit,
-    denselist: ChildContent,
+    child: ChildContent,
 }
 
 #[derive(Debug)]
@@ -232,7 +227,6 @@ pub enum ChildLayout {
 
 #[derive(Debug)]
 pub struct ChildInit {
-    spot: SpotConn,
     layout: ChildLayout,
 }
 
@@ -278,7 +272,6 @@ impl FactoryComponent for Child {
             ChildLayout::SingleDenseList(ref source) => {
                 let denselist = denselist::Model::builder()
                     .launch(denselist::Init {
-                        spot: init.spot.clone(),
                         source: source.clone(),
                     })
                     .forward(sender.output_sender(), |msg| match msg {
@@ -286,18 +279,19 @@ impl FactoryComponent for Child {
                     });
                 Child {
                     init,
-                    denselist: ChildContent::DenseList(denselist),
+                    child: ChildContent::DenseList(denselist),
                 }
             }
             ChildLayout::SearchPage => {
-                let sp = searchpage::Model::builder()
-                    .launch(init.spot.clone())
-                    .forward(sender.output_sender(), |msg| match msg {
+                let sp = searchpage::Model::builder().launch(()).forward(
+                    sender.output_sender(),
+                    |msg| match msg {
                         searchpage::Out::Nav(nav_out) => ChildOut::Nav(nav_out),
-                    });
+                    },
+                );
                 Child {
                     init,
-                    denselist: ChildContent::SearchPage(sp),
+                    child: ChildContent::SearchPage(sp),
                 }
             }
         }
@@ -312,14 +306,14 @@ impl FactoryComponent for Child {
 
 impl Child {
     fn emit_nav(&self, nav_cmd: NavCommand) {
-        match &self.denselist {
+        match &self.child {
             ChildContent::DenseList(dl) => dl.emit(denselist::In::Nav(nav_cmd)),
             ChildContent::SearchPage(sp) => sp.emit(searchpage::In::Nav(nav_cmd)),
         }
     }
 
     fn child_widget(&self) -> gtk::Widget {
-        match &self.denselist {
+        match &self.child {
             ChildContent::DenseList(dl) => dl.widget().clone().into(),
             ChildContent::SearchPage(sp) => sp.widget().clone().into(),
         }

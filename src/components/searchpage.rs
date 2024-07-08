@@ -11,7 +11,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Model {
-    spot: SpotConn,
     searchbox: gtk::Entry,
     btn_go: gtk::Button,
 
@@ -33,7 +32,7 @@ pub enum Out {
 
 #[relm4::component(pub)]
 impl Component for Model {
-    type Init = SpotConn;
+    type Init = ();
     type Input = In;
     type Output = Out;
     type CommandOutput = ();
@@ -68,27 +67,13 @@ impl Component for Model {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let multiview = multiview::Model::builder()
-            .launch(multiview::Init {
-                spot: init.clone(),
-                // TODO: Update the sources after search is executed. Start with empty.
-                sections: vec![
-                    denselist_factory::Init {
-                        spot: init.clone(),
-                        source: SpotItem::UserPlaylists,
-                    },
-                    denselist_factory::Init {
-                        spot: init.clone(),
-                        source: SpotItem::UserPlaylists,
-                    },
-                ],
-            })
+            .launch(multiview::Init { sections: vec![] })
             .forward(sender.output_sender(), |msg| match msg {
                 multiview::Out::Nav(nav_out) => Out::Nav(nav_out),
             });
 
         let widgets = view_output!();
         let model = Model {
-            spot: init,
             searchbox: widgets.searchbox.clone(),
             btn_go: widgets.btn_go.clone(),
             multiview,
@@ -104,19 +89,16 @@ impl Component for Model {
                 self.searchbox.grab_focus();
             }
             In::ExecuteSearch => {
-                let spot = self.spot.clone();
                 let query = self.searchbox.text().to_string();
 
                 let sections = vec![
                     denselist_factory::Init {
-                        spot: self.spot.clone(),
                         source: SpotItem::SearchResults {
                             st: SearchType::Album,
                             query: query.clone(),
                         },
                     },
                     denselist_factory::Init {
-                        spot: self.spot.clone(),
                         source: SpotItem::SearchResults {
                             st: SearchType::Track,
                             query: query.clone(),

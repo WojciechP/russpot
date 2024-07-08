@@ -20,9 +20,6 @@ pub(crate) mod navigation;
 mod spotconn;
 
 struct AppModel {
-    counter: u8,
-    spot: SpotConn,
-
     actions: Controller<Actions>,
     switchview: Controller<switchview::Model>,
 }
@@ -40,7 +37,7 @@ impl relm4::SimpleComponent for AppModel {
     /// The type of the messages that this component can send.
     type Output = ();
     /// The type of data with which this component will be initialized.
-    type Init = u8;
+    type Init = ();
 
     view! {
         main_window = gtk::Window {
@@ -67,13 +64,12 @@ impl relm4::SimpleComponent for AppModel {
 
     /// Initialize the UI and model.
     fn init(
-        counter: Self::Init,
+        _: Self::Init,
         window: Self::Root,
         sender: ComponentSender<Self>,
     ) -> relm4::ComponentParts<Self> {
         // let spot_playlist_id = SpotifyId::from_base62("7EsmFgvsvdK7HXh5k5Esbt").unwrap();
         let _spot_track_id = SpotifyId::from_base62("416oYM4vj129L8BP7B0qlO").unwrap();
-        let spot = SpotConn::new();
 
         let switchview: Controller<switchview::Model> = switchview::Model::builder()
             .launch(switchview::Init {})
@@ -92,8 +88,6 @@ impl relm4::SimpleComponent for AppModel {
                 }
             });
         let model = AppModel {
-            spot: spot,
-            counter,
             switchview,
             actions: actions_model,
         };
@@ -145,20 +139,16 @@ impl relm4::SimpleComponent for AppModel {
                     .and_then(|dl| dl.model().play_context())
                 {
                     debug!("play now -> ctx is some");
-                    let spot = self.spot.clone();
                     _sender.oneshot_command(async move {
-                        spot.play_context(ctx, offset).await;
+                        SpotConn::get().play_context(ctx, offset).await;
                     })
                 } else {
                     debug!("playnow -> no ctx");
                 }
             }
-            AppInput::SpircNow => {
-                let spot = self.spot.clone();
-                _sender.oneshot_command(async move {
-                    spot.play_on_spirc().await;
-                })
-            }
+            AppInput::SpircNow => _sender.oneshot_command(async move {
+                SpotConn::get().play_on_spirc().await;
+            }),
         }
     }
 }
@@ -167,5 +157,5 @@ fn main() {
     env_logger::init();
     let app = RelmApp::new("relm4.test.simple_manual");
     app.set_global_css(include_str!("style.css"));
-    app.run::<AppModel>(0);
+    app.run::<AppModel>(());
 }
